@@ -90,18 +90,27 @@ mdexport notes.md --watch      # rebuild on every save (uses watchexec if presen
 
 ## Install
 
+One step:
+
 ```bash
 git clone <this-repo> notmarkdown && cd notmarkdown
-brew install pandoc typst
-uv tool install mermaidx            # or: pipx install mermaidx
-
-# Put the CLI on PATH. mdexport resolves this symlink back to the repo so it finds
-# mermaid.lua / mermaid-render / typography.html beside the real file.
-mkdir -p ~/.local/bin
-ln -s "$PWD/mdexport" ~/.local/bin/mdexport
+./setup.sh
 ```
 
-Make sure `~/.local/bin` is on your `PATH` (`echo $PATH`), then `mdexport notes.md`.
+`setup.sh` is idempotent (safe to re-run). It installs `pandoc` + `typst` via
+Homebrew and `mermaidx` via uv/pipx if missing, then symlinks `mdexport` into
+`~/.local/bin` (backing up anything already there) and checks it's on your PATH.
+Then: `mdexport notes.md`.
+
+<details><summary>Or do it by hand</summary>
+
+```bash
+brew install pandoc typst
+uv tool install mermaidx            # or: pipx install mermaidx
+mkdir -p ~/.local/bin
+ln -s "$PWD/mdexport" ~/.local/bin/mdexport   # mdexport resolves this back to the repo for its assets
+```
+</details>
 
 **Uninstall (the exit is one symlink):**
 
