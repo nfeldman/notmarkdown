@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#
+# mermaid-render — render a Mermaid file to SVG, browser-free, and correct.
+#
+# Wraps mermaidx (which runs the real Mermaid v11 JS in an embedded engine, no
+# headless Chrome) and then fixes a z-order quirk in its output: mermaidx emits
+# each node's filled container shape AFTER the node's label text, and since SVG
+# has no z-index the fill paints over the text — node labels come out invisible.
+# We move each node's `label-container` shape before its label so text shows.
+#
+# Interface matches mmdc, so the Pandoc filter can call either:
+#   mermaid-render -i diagram.mmd -o diagram.svg
+# To use the official (headless-Chrome) renderer instead, set in the environment:
+#   MDEXPORT_MERMAID=mmdc
+# ---------------------------------------------------------------------------
+set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"   # mermaidx lands here via pip --user
+
+IN=""; OUT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -i|--input)  IN="$2"; shift 2 ;;
+    -o|--output) OUT="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$IN" && -n "$OUT" ]] || { echo "usage: mermaid-render -i in.mmd -o out.svg" >&2; exit 2; }
+
+command -v mermaidx >/dev/null 2>&1 || { echo "mermaid-render: mermaidx not found (pip install --user mermaidx)" >&2; exit 1; }
+
+mermaidx -i "$IN" -o "$OUT" >/dev/null 2>&1
+
+# Two in-place fixes for mermaidx's fake-DOM output (both no-ops on diagram types
+# without node/label-container structure, so this degrades gracefully):
+#   1. Z-ORDER: mermaidx emits each node's filled container AFTER its label, so
+#      the fill paints over the text. Move containers first -> labels show.
+#   2. VIEWBOX: mermaidx sometimes computes a canvas too narrow for the rightmost
+#      nodes, clipping them. Expand the viewBox to the union of node extents.
+python3 - "$OUT" <<'PY'
+import sys, re, xml.etree.ElementTree as ET
+NS = 'http://www.w3.org/2000/svg'; ET.register_namespace('', NS)
+path = sys.argv[1]
+try:
+    tree = ET.parse(path); root = tree.getroot()
+except Exception as e:
+    # Don't discard a diagram we can't post-process; ship mermaidx's raw SVG.
+    sys.stderr.write(f'mermaid-render: skipping fixups ({e}); using raw SVG\n')
+    sys.exit(0)
+
+def translate(s):
+    m = re.search(r'translate\(\s*([-\d.]+)[ ,]+([-\d.]+)', s or '')
+    return (float(m.group(1)), float(m.group(2))) if m else (0.0, 0.0)
+
+xs, ys = [], []
+nodes = reordered = 0
+for g in root.iter('{%s}g' % NS):
+    if 'node' not in g.get('class', '').split():
+        continue
+    nodes += 1
+    gx, gy = translate(g.get('transform'))
+    for kid in list(g):
+        if 'label-container' not in kid.get('class', ''):
+            continue
+        g.remove(kid); g.insert(0, kid); reordered += 1      # (1) z-order
+        px, py = translate(kid.get('transform'))
+        ox, oy = gx + px, gy + py
+        if kid.tag.endswith('rect'):
+            x, y = float(kid.get('x', 0)), float(kid.get('y', 0))
+            w, h = float(kid.get('width', 0)), float(kid.get('height', 0))
+            xs += [ox + x, ox + x + w]; ys += [oy + y, oy + y + h]
+        elif kid.tag.endswith('polygon'):
+            pts = [float(v) for v in re.split(r'[ ,]+', kid.get('points', '').strip()) if v]
+            xs += [ox + v for v in pts[0::2]]; ys += [oy + v for v in pts[1::2]]
+
+# Canary: if mermaidx renamed its internals, we'd match nodes but reorder nothing
+# and silently regress to the original bugs. Say so instead of failing quietly.
+if nodes and not reordered:
+    sys.stderr.write('mermaid-render: found nodes but no "label-container" to fix — '
+                     'mermaidx internals may have changed; re-test against a known flowchart\n')
+
+if xs and root.get('viewBox'):                               # (2) expand viewBox
+    vb = [float(v) for v in root.get('viewBox').split()]
+    m = 8
+    x0 = min(min(xs), vb[0]) - m; y0 = min(min(ys), vb[1]) - m
+    x1 = max(max(xs), vb[0] + vb[2]) + m; y1 = max(max(ys), vb[1] + vb[3]) + m
+    root.set('viewBox', f'{x0:.2f} {y0:.2f} {x1 - x0:.2f} {y1 - y0:.2f}')
+    root.set('width', f'{x1 - x0:.2f}')
+    if root.get('style'):                                    # drop the too-small max-width cap
+        root.set('style', re.sub(r'max-width:[^;]*;?', '', root.get('style')))
+
+tree.write(path)
+PY

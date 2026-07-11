@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+#
+# mdexport — turn a Markdown file (with embedded Mermaid + LaTeX) into a durable,
+# self-contained document where NOTHING is left as raw syntax.
+#
+#   HTML : one self-contained .html file — inline-SVG diagrams, MathML equations
+#          (no JavaScript, no network, ~20 KB), high-quality typography. The
+#          legible/editable durable copy: open it in any browser for decades.
+#   PDF  : via Typst — fast, archival-grade typesetting, diagrams + math baked in.
+#          `--pdfa` emits an ISO-standard PDF/A archival file.
+#
+# Markdown stays your source of truth; every export is a reproducible snapshot.
+#
+# Usage:
+#   mdexport FILE.md                 # -> FILE.html (default)
+#   mdexport FILE.md --pdf           # -> FILE.pdf
+#   mdexport FILE.md --all           # -> FILE.html and FILE.pdf
+#   mdexport FILE.md --pdfa          # -> FILE.pdf as PDF/A-2b (archival)
+#   mdexport FILE.md --html --open   # build HTML and open it
+#   mdexport FILE.md --watch         # rebuild (default format) on every save
+#
+# Requires: pandoc, mermaidx (pip), and — for PDF — typst. All from setup.sh.
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+# Assets live next to this script (resolve symlinks so it works from ~/.local/bin).
+SELF="${BASH_SOURCE[0]}"
+while [[ -L "$SELF" ]]; do SELF="$(readlink "$SELF")"; done
+ASSETS="$(cd "$(dirname "$SELF")" && pwd)"
+LUA="$ASSETS/mermaid.lua"
+HEADER="$ASSETS/typography.html"
+
+# ~/.local/bin holds mermaidx (pip --user); make sure it resolves.
+export PATH="$HOME/.local/bin:$PATH"
+
+# Mermaid renderer the filter shells out to. Default: our browser-free wrapper
+# (mermaidx + z-order fix). Override with MDEXPORT_MERMAID=mmdc for the official
+# headless-Chrome renderer if you ever hit a diagram the browser-free path can't
+# handle. Absolute path so it resolves whether run from the repo or ~/.local/bin.
+export MDEXPORT_MERMAID="${MDEXPORT_MERMAID:-$ASSETS/mermaid-render}"
+
+die() { printf '\033[1;31mmdexport:\033[0m %s\n' "$1" >&2; exit 1; }
+info() { printf '\033[1;34m==>\033[0m %s\n' "$1" >&2; }
+ok()   { printf '\033[1;32m ok\033[0m %s\n' "$1" >&2; }
+
+# --- parse args ------------------------------------------------------------
+IN=""; DO_HTML=0; DO_PDF=0; PDFA=0; OPEN=0; WATCH=0
+BUILD_ARGS=()   # args minus --watch, for the watcher to re-invoke a single build
+for a in "$@"; do
+  case "$a" in
+    --html) DO_HTML=1; BUILD_ARGS+=("$a") ;;
+    --pdf)  DO_PDF=1;  BUILD_ARGS+=("$a") ;;
+    --pdfa) DO_PDF=1; PDFA=1; BUILD_ARGS+=("$a") ;;
+    --all)  DO_HTML=1; DO_PDF=1; BUILD_ARGS+=("$a") ;;
+    --open) OPEN=1; BUILD_ARGS+=("$a") ;;
+    --watch) WATCH=1 ;;
+    -*) die "unknown option: $a" ;;
+    *) IN="$a"; BUILD_ARGS+=("$a") ;;
+  esac
+done
+[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--watch]"
+[[ -f "$IN" ]] || die "not found: $IN"
+# Default output is HTML unless only --pdf/--pdfa was asked for.
+[[ $DO_HTML -eq 0 && $DO_PDF -eq 0 ]] && DO_HTML=1
+
+command -v pandoc >/dev/null 2>&1 || die "pandoc not found (brew install pandoc)"
+command -v mermaidx >/dev/null 2>&1 || die "mermaidx not found (pip install --user mermaidx)"
+if [[ $DO_PDF -eq 1 ]]; then
+  command -v typst >/dev/null 2>&1 || die "typst not found (brew install typst)"
+fi
+
+base="$(basename "${IN%.*}")"
+dir="$(dirname "$IN")"
+
+# --- no-syntax-leak guarantee -----------------------------------------------
+# Diagrams are guaranteed for BOTH formats at the source: mermaid.lua aborts the
+# whole pandoc run (non-zero exit) if any diagram fails to render, so a raw fence
+# can never reach the HTML or the PDF. The HTML check below is a belt-and-braces
+# sentinel. (Math that pandoc itself cannot parse is passed through with a pandoc
+# warning on stderr — watch the build output; that's a source-LaTeX error, not a
+# pipeline failure.)
+check_html_leak() {
+  local f="$1"
+  grep -q 'class="mermaid"' "$f" && die "leak: an unrendered mermaid block is still in $f"
+  ok "$(basename "$f") — self-contained, no raw mermaid ($(wc -c <"$f" | tr -d ' ') bytes)"
+}
+
+build_html() {
+  local out="$dir/$base.html"
+  info "HTML  $IN -> $out"
+  MDEXPORT_TMP="$TMP" pandoc "$IN" \
+    --from=markdown+tex_math_dollars \
+    --to=html5 \
+    --standalone \
+    --embed-resources \
+    --lua-filter="$LUA" \
+    --mathml \
+    --include-in-header="$HEADER" \
+    --output="$out"
+  check_html_leak "$out"
+  [[ $OPEN -eq 1 ]] && open "$out"
+  return 0
+}
+
+build_pdf() {
+  local out="$dir/$base.pdf"
+  if [[ $PDFA -eq 1 ]]; then
+    # Route through a .typ intermediate so we can request a PDF/A standard.
+    info "PDF/A $IN -> $out"
+    local typ="$TMP/$base.typ"
+    MDEXPORT_TMP="$TMP" pandoc "$IN" \
+      --from=markdown+tex_math_dollars \
+      --to=typst \
+      --lua-filter="$LUA" \
+      --output="$typ"
+    # --root / so the absolute SVG paths in the .typ resolve from the filesystem
+    # root (otherwise Typst treats a leading "/" as relative to its own root).
+    typst compile --root / --pdf-standard a-2b "$typ" "$out"
+  else
+    info "PDF   $IN -> $out"
+    MDEXPORT_TMP="$TMP" pandoc "$IN" \
+      --from=markdown+tex_math_dollars \
+      --lua-filter="$LUA" \
+      --pdf-engine=typst \
+      --output="$out"
+  fi
+  ok "$(basename "$out") ($(wc -c <"$out" | tr -d ' ') bytes)"
+  [[ $OPEN -eq 1 ]] && open "$out"
+  return 0
+}
+
+run_once() {
+  TMP="$(mktemp -d)"
+  # RETURN cleans up after a normal build (incl. each --watch iteration); EXIT
+  # covers the die()/errexit path, where RETURN traps don't fire.
+  trap '[[ -n "${TMP:-}" ]] && rm -rf "$TMP"' RETURN EXIT
+  [[ $DO_HTML -eq 1 ]] && build_html
+  [[ $DO_PDF  -eq 1 ]] && build_pdf
+  return 0   # never let a false [[ ]] above become this function's (and the script's) exit status
+}
+
+if [[ $WATCH -eq 1 ]]; then
+  info "watching $IN (Ctrl-C to stop)"
+  if command -v watchexec >/dev/null 2>&1; then
+    exec watchexec --watch "$IN" -- "$0" "${BUILD_ARGS[@]}"
+  fi
+  # Fallback watcher (no watchexec): poll mtime once a second.
+  last=""
+  while true; do
+    now="$(stat -f %m "$IN" 2>/dev/null || echo 0)"
+    if [[ "$now" != "$last" ]]; then last="$now"; run_once || true; fi
+    sleep 1
+  done
+else
+  run_once
+fi
