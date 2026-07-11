@@ -19,6 +19,28 @@
 --]]
 
 local RENDERER = os.getenv('MDEXPORT_MERMAID') or 'mermaidx'
+-- Strict mode (mdexport --strict): a single failed diagram aborts the whole
+-- build, as before. Default (unset): failures are ISOLATED to their block — the
+-- rest of the document still renders. This is the fix for the old flaw where one
+-- unsupported diagram destroyed the entire output.
+local STRICT = os.getenv('MDEXPORT_STRICT')
+
+-- Build a visible, cross-format placeholder for a diagram that failed to render.
+-- Returned as a Pandoc Div (not format-specific raw text), so BOTH the HTML and
+-- Typst writers emit visible content and a raw ```mermaid fence can never reach
+-- either output. The source is preserved in a CodeBlock with a neutral class so
+-- it (a) does not re-trigger this filter and (b) does not trip mdexport's HTML
+-- no-leak sentinel, which greps for class="mermaid".
+local function placeholder(src, why)
+  io.stderr:write(string.format('mermaid.lua: diagram failed to render (%s); '
+    .. 'emitting a placeholder (use --strict to abort instead)\n', why))
+  local head = pandoc.Para({
+    pandoc.Strong({pandoc.Str('\u{26A0} diagram failed to render')}),
+    pandoc.Space(), pandoc.Str('(' .. why .. ')'),
+  })
+  local body = pandoc.CodeBlock(src, {class = 'notmarkdown-render-error'})
+  return pandoc.Div({head, body}, {class = 'notmarkdown-render-error'})
+end
 
 function CodeBlock(cb)
   if not cb.classes:includes('mermaid') then return nil end
@@ -34,17 +56,25 @@ function CodeBlock(cb)
   -- Quote paths so spaces in a temp dir can't break the shell-out.
   local cmd = string.format('%s -i %q -o %q >/dev/null 2>&1', RENDERER, mmd, svg)
   if not os.execute(cmd) then
-    -- Abort the conversion rather than pass the raw fence through: a broken
-    -- diagram must never reach the HTML or the PDF as text.
-    error(string.format('mermaid render failed (%s). Fix the diagram or set '
-      .. 'MDEXPORT_MERMAID=mmdc. Offending source:\n%s', RENDERER, cb.text))
+    -- A broken diagram must never reach the HTML or PDF as raw ```mermaid text.
+    -- Strict: abort the whole build. Default: isolate the failure to this block
+    -- and keep going, so one bad diagram no longer destroys the document.
+    if STRICT then
+      error(string.format('mermaid render failed (%s) and --strict is set. Fix '
+        .. 'the diagram or set MDEXPORT_MERMAID=mmdc. Offending source:\n%s',
+        RENDERER, cb.text))
+    end
+    return placeholder(cb.text, RENDERER .. ' render failed')
   end
 
   -- HTML: inline the SVG markup directly (greppable, no base64 bloat).
   -- Other targets (Typst/PDF, LaTeX): reference the file so the writer embeds it.
   if FORMAT:match('html') then
     local sh = io.open(svg, 'r')
-    if not sh then error('mermaid.lua: rendered SVG went missing: ' .. svg) end
+    if not sh then
+      if STRICT then error('mermaid.lua: rendered SVG went missing: ' .. svg) end
+      return placeholder(cb.text, 'rendered SVG went missing')
+    end
     local data = sh:read('*a'); sh:close()
     data = data:gsub('^%s*<%?xml.-%?>%s*', '')      -- drop XML prolog for clean HTML5
     return pandoc.RawBlock('html', data)
