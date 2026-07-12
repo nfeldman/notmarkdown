@@ -39,5 +39,19 @@ jobs:
           npm i -g @mermaid-js/mermaid-cli
           mmdc --version || true
 
+      # epubcheck — pinned; turns the suite's EPUB-validation SKIP into a real pass.
+      # A wrapper puts `epubcheck` on PATH (the suite calls it by name). continue-on-error
+      # keeps a flaky download from failing the build: if setup can't complete, the suite
+      # just skips epubcheck instead.
+      - name: Install epubcheck
+        continue-on-error: true
+        run: |
+          sudo apt-get update && sudo apt-get install -y default-jre-headless
+          curl -fsSL https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip -o /tmp/epubcheck.zip
+          sudo unzip -q /tmp/epubcheck.zip -d /opt
+          printf '#!/bin/sh\nexec java -jar /opt/epubcheck-5.3.0/epubcheck.jar "$@"\n' | sudo tee /usr/local/bin/epubcheck >/dev/null
+          sudo chmod +x /usr/local/bin/epubcheck
+          epubcheck --version
+
       - name: Run regression suite
         run: bash tests/run.sh
