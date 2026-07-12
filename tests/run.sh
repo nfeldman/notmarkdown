@@ -148,6 +148,22 @@ assert_grep "$FS/fa.html" 'href="sub/c.md"'       "--follow leaves subdir links 
 { [ -f "$FS/fa.pdf" ] || [ -f "$FS/fb.pdf" ]; } && bad "--follow is HTML-only" "a PDF was produced for a followed doc" \
                                                 || ok "--follow is HTML-only (no PDF for followed docs)"
 
+# --pdf-from-html: browser-rendered PDF (skips if no working Chromium browser).
+fixture ph.md '# t
+
+Inline `code` and a fenced block below.
+
+    plain indented block
+'
+"$MDEXPORT" "$WORK/ph.md" --pdf-from-html >"$WORK/.log" 2>&1; BUILD_RC=$?
+if [ "$BUILD_RC" -ne 0 ] && grep -qiE 'Chromium browser|print-to-pdf|no PDF' "$WORK/.log"; then
+  skp "--pdf-from-html" "no working Chromium browser in this environment"
+else
+  assert_rc "$BUILD_RC" 0 "--pdf-from-html builds a browser PDF"
+  assert_file "$WORK/ph.pdf"  "--pdf-from-html produced the PDF"
+  assert_file "$WORK/ph.html" "--pdf-from-html also produced the source HTML"
+fi
+
 # ===========================================================================
 # Per-renderer tests. Each renderer is probed first; a failing probe -> SKIP.
 # ===========================================================================

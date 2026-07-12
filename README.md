@@ -82,6 +82,7 @@ mdexport notes.md              # -> notes.html (self-contained)
 mdexport notes.md --pdf        # -> notes.pdf  (via Typst)
 mdexport notes.md --all        # both
 mdexport notes.md --pdfa       # -> notes.pdf as PDF/A-2b (archival, fonts embedded)
+mdexport notes.md --pdf-from-html  # -> notes.pdf by printing the HTML (browser, high fidelity)
 mdexport notes.md --open       # build HTML and open it
 mdexport notes.md --strict     # abort the build if any diagram fails (default: placeholder)
 mdexport notes.md --follow     # also export every same-dir .md it links to (HTML, links rewritten)
@@ -92,6 +93,15 @@ mdexport notes.md --watch      # rebuild on every save (uses watchexec if presen
 every same-directory `.md` it links to (transitively, cycles handled), HTML only, and
 rewrites each `[x](other.md)` cross-link to `other.html` so the exported set stays
 navigable. Links to other directories and to URLs are left untouched.
+
+**Two PDF paths.** `--pdf` (and `--pdfa`) go Markdown → Typst: fast, dependency-light,
+archival, but the PDF uses Typst's own styling, so it doesn't match the HTML exactly.
+`--pdf-from-html` instead prints the *built HTML* with a headless browser, so the PDF
+inherits `typography.html` verbatim — code pills, measure, fonts, spacing all identical
+to what you see in the browser. It needs a Chromium-family browser (Chrome/Chromium/
+Edge/Brave, or the `chrome-headless-shell` that `mmdc` installs); point `MDEXPORT_CHROME`
+at one if it isn't auto-found. Prefer `--pdf-from-html` when you want the PDF to look
+like the HTML; keep `--pdf`/`--pdfa` for archival/offline builds.
 
 ## Requirements
 

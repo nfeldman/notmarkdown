@@ -16,6 +16,7 @@
 #   mdexport FILE.md --pdf           # -> FILE.pdf
 #   mdexport FILE.md --all           # -> FILE.html and FILE.pdf
 #   mdexport FILE.md --pdfa          # -> FILE.pdf as PDF/A-2b (archival)
+#   mdexport FILE.md --pdf-from-html # -> FILE.pdf by printing the HTML (needs a browser)
 #   mdexport FILE.md --html --open   # build HTML and open it
 #   mdexport FILE.md --strict        # abort the build if ANY diagram fails
 #   mdexport FILE.md --follow        # also build every same-dir .md it links to (HTML)
@@ -63,13 +64,14 @@ info() { printf '\033[1;34m==>\033[0m %s\n' "$1" >&2; }
 ok()   { printf '\033[1;32m ok\033[0m %s\n' "$1" >&2; }
 
 # --- parse args ------------------------------------------------------------
-IN=""; DO_HTML=0; DO_PDF=0; PDFA=0; OPEN=0; WATCH=0; STRICT=0; FOLLOW=0
+IN=""; DO_HTML=0; DO_PDF=0; PDFA=0; OPEN=0; WATCH=0; STRICT=0; FOLLOW=0; PDF_HTML=0
 BUILD_ARGS=()   # args minus --watch, for the watcher to re-invoke a single build
 for a in "$@"; do
   case "$a" in
     --html) DO_HTML=1; BUILD_ARGS+=("$a") ;;
     --pdf)  DO_PDF=1;  BUILD_ARGS+=("$a") ;;
     --pdfa) DO_PDF=1; PDFA=1; BUILD_ARGS+=("$a") ;;
+    --pdf-from-html) PDF_HTML=1; BUILD_ARGS+=("$a") ;;
     --all)  DO_HTML=1; DO_PDF=1; BUILD_ARGS+=("$a") ;;
     --open) OPEN=1; BUILD_ARGS+=("$a") ;;
     --strict) STRICT=1; BUILD_ARGS+=("$a") ;;
@@ -83,16 +85,20 @@ done
 # Default: mermaid.lua isolates a failed diagram to a visible placeholder and the
 # rest of the document still renders. The filter reads this via the environment.
 [[ $STRICT -eq 1 ]] && export MDEXPORT_STRICT=1
-[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--strict|--follow|--watch]"
+[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--pdf-from-html|--strict|--follow|--watch]"
 [[ -f "$IN" ]] || die "not found: $IN"
 # Default output is HTML unless only --pdf/--pdfa was asked for.
 [[ $DO_HTML -eq 0 && $DO_PDF -eq 0 ]] && DO_HTML=1
 # --follow exports a whole set of interlinked same-directory docs; only HTML makes
 # sense there (cross-doc navigation), so it forces HTML-only.
 if [[ $FOLLOW -eq 1 ]]; then
-  [[ $DO_PDF -eq 1 ]] && info "--follow builds HTML only; ignoring the PDF request"
-  DO_HTML=1; DO_PDF=0; PDFA=0
+  { [[ $DO_PDF -eq 1 ]] || [[ $PDF_HTML -eq 1 ]]; } && info "--follow builds HTML only; ignoring the PDF request"
+  DO_HTML=1; DO_PDF=0; PDFA=0; PDF_HTML=0
 fi
+# --pdf-from-html renders the built HTML to PDF with a browser (high typographic
+# fidelity: the PDF matches the HTML). It needs the HTML and supersedes the Typst
+# PDF path (--pdf/--pdfa) rather than producing two different FILE.pdf.
+if [[ $PDF_HTML -eq 1 ]]; then DO_HTML=1; DO_PDF=0; PDFA=0; fi
 
 command -v pandoc >/dev/null 2>&1 || die "pandoc not found (brew install pandoc)"
 # Check whichever renderer is selected (first token, in case it carries args).
@@ -174,13 +180,58 @@ build_pdf() {
   return 0
 }
 
+# Locate a Chromium-family browser for --pdf-from-html. Preference: an explicit
+# MDEXPORT_CHROME, then a browser on PATH, then the common macOS app bundles, then
+# the chrome-headless-shell that mermaid-cli (mmdc) installs. Prints the path.
+find_chrome() {
+  if [[ -n "${MDEXPORT_CHROME:-}" && -x "${MDEXPORT_CHROME}" ]]; then printf '%s\n' "$MDEXPORT_CHROME"; return 0; fi
+  local c
+  for c in google-chrome google-chrome-stable chromium chromium-browser brave microsoft-edge; do
+    command -v "$c" >/dev/null 2>&1 && { command -v "$c"; return 0; }
+  done
+  for c in \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"; do
+    [[ -x "$c" ]] && { printf '%s\n' "$c"; return 0; }
+  done
+  # newest chrome-headless-shell from the puppeteer cache (mmdc's engine)
+  c="$(ls -t "$HOME"/.cache/puppeteer/chrome-headless-shell/*/*/chrome-headless-shell 2>/dev/null | head -1 || true)"
+  [[ -n "$c" && -x "$c" ]] && { printf '%s\n' "$c"; return 0; }
+  return 1
+}
+
+# High-fidelity PDF: print the already-built self-contained HTML with a browser,
+# so the PDF inherits typography.html exactly (code styling, measure, fonts, …).
+build_pdf_html() {
+  local html="$dir/$base.html" out="$dir/$base.pdf" chrome err
+  [[ -f "$html" ]] || die "internal: HTML for $IN was not built"
+  chrome="$(find_chrome)" || die "--pdf-from-html needs a Chromium browser. Install Google \
+Chrome, or 'npm i -g @mermaid-js/mermaid-cli' (brings chrome-headless-shell), or point \
+MDEXPORT_CHROME at a browser binary."
+  info "PDF   $html -> $out (via $(basename "$chrome"))"
+  # Absolute file:// URL (spaces percent-encoded so the browser accepts it).
+  local abs; abs="$(cd "$dir" && pwd)/$base.html"
+  err="$TMP/chrome.err"
+  if ! "$chrome" --headless --no-sandbox --no-pdf-header-footer \
+        --print-to-pdf="$out" "file://${abs// /%20}" >/dev/null 2>"$err"; then
+    die "browser print-to-pdf failed: $(tail -1 "$err" 2>/dev/null)"
+  fi
+  [[ -s "$out" ]] || die "browser produced no PDF: $(tail -1 "$err" 2>/dev/null)"
+  ok "$(basename "$out") ($(wc -c <"$out" | tr -d ' ') bytes)"
+  [[ $OPEN -eq 1 ]] && open "$out"
+  return 0
+}
+
 run_once() {
   TMP="$(mktemp -d)"
   # RETURN cleans up after a normal build (incl. each --watch iteration); EXIT
   # covers the die()/errexit path, where RETURN traps don't fire.
   trap '[[ -n "${TMP:-}" ]] && rm -rf "$TMP"' RETURN EXIT
-  [[ $DO_HTML -eq 1 ]] && build_html
-  [[ $DO_PDF  -eq 1 ]] && build_pdf
+  [[ $DO_HTML   -eq 1 ]] && build_html
+  if   [[ $PDF_HTML -eq 1 ]]; then build_pdf_html   # browser-rendered PDF from the HTML
+  elif [[ $DO_PDF   -eq 1 ]]; then build_pdf; fi     # Typst-rendered PDF from Markdown
   return 0   # never let a false [[ ]] above become this function's (and the script's) exit status
 }
 
