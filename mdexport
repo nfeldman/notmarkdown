@@ -37,11 +37,12 @@ HEADER="$ASSETS/typography.html"
 # ~/.local/bin holds mermaidx (pip --user); make sure it resolves.
 export PATH="$HOME/.local/bin:$PATH"
 
-# Mermaid renderer the filter shells out to. Default: our browser-free wrapper
-# (mermaidx + z-order fix). Override with MDEXPORT_MERMAID=mmdc for the official
-# headless-Chrome renderer if you ever hit a diagram the browser-free path can't
-# handle. Absolute path so it resolves whether run from the repo or ~/.local/bin.
-export MDEXPORT_MERMAID="${MDEXPORT_MERMAID:-$ASSETS/mermaid-render}"
+# Mermaid renderer the filter shells out to. Default: mmdc (official mermaid-cli,
+# headless Chrome) — the only renderer covering every diagram type at full
+# fidelity; the filter feeds it per-format artifacts (inline SVG for HTML, hi-DPI
+# PNG for PDF). Opt out to the browser-free mermaidx wrapper (no Chrome, SVG-only,
+# ~5 diagram types) with MDEXPORT_MERMAID="$ASSETS/mermaid-render".
+export MDEXPORT_MERMAID="${MDEXPORT_MERMAID:-mmdc}"
 
 die() { printf '\033[1;31mmdexport:\033[0m %s\n' "$1" >&2; exit 1; }
 info() { printf '\033[1;34m==>\033[0m %s\n' "$1" >&2; }
@@ -73,7 +74,10 @@ done
 [[ $DO_HTML -eq 0 && $DO_PDF -eq 0 ]] && DO_HTML=1
 
 command -v pandoc >/dev/null 2>&1 || die "pandoc not found (brew install pandoc)"
-command -v mermaidx >/dev/null 2>&1 || die "mermaidx not found (pip install --user mermaidx)"
+# Check whichever renderer is selected (first token, in case it carries args).
+RENDERER_BIN="${MDEXPORT_MERMAID%% *}"
+command -v "$RENDERER_BIN" >/dev/null 2>&1 || die "mermaid renderer '$RENDERER_BIN' not found \
+(default is mmdc: 'npm i -g @mermaid-js/mermaid-cli'; or set MDEXPORT_MERMAID to the mermaidx wrapper)"
 if [[ $DO_PDF -eq 1 ]]; then
   command -v typst >/dev/null 2>&1 || die "typst not found (brew install typst)"
 fi
