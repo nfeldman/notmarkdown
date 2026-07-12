@@ -1,7 +1,12 @@
 # mdexport writes its output next to the source .md — don't commit generated docs.
 *.html
 *.pdf
+*.epub
+*.zip
 
 # Python bytecode from the test suite.
 __pycache__/
 *.pyc
+
+# Machine-local Claude Code settings (never publish these).
+.claude/settings.local.json
