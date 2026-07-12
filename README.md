@@ -47,22 +47,42 @@ Markdown ─▶ pandoc ─▶ mermaid.lua ─┤
   placeholder instead of aborting the build. Inline SVGs are id-namespaced (`svg-scope`)
   so multiple diagrams never collide in one document.
 
-### The one honest tradeoff
+## Two of everything
 
-Full fidelity across *every* diagram type means **headless Chrome** (`mmdc`, the
-official mermaid-cli) — a ~170 MB Chromium download that is the classic thing to break
-on an OS/toolchain bump. So it is **opt-in**, not the default. When you do opt in, the
-filter renders the whole document in one batched launch and feeds each output format
-the artifact it displays correctly: inline SVG for HTML, and a **high-DPI PNG for the
-PDF** (Typst's SVG engine silently drops mmdc's `<foreignObject>` labels, so we embed
-browser pixels it can't mangle). One env var, no code change:
+Every choice here is a tradeoff, and the interesting ones have no right answer — only a
+defensible one for a given set of constraints. So where a choice was genuinely contested,
+there are two paths: a **default that leans boring and durable**, and an **opt-in that
+spends durability on fidelity or coverage**. Choose per document; nothing is load-bearing
+across the whole system, so you're free to disagree with a default one file at a time.
+
+**Diagram renderer — small and browser-free, or complete and heavy.** The default,
+`mermaidx`, runs Mermaid in an embedded JS engine: no headless Chrome (the single biggest
+long-term-fragility source in this space), at the price of ~5 diagram types and the
+occasional rough render. `MDEXPORT_MERMAID=mmdc` opts into the official mermaid-cli — every
+diagram type, exactly as the web draws them — and with it a ~170 MB Chromium that is the
+classic thing to break on an OS bump. Newer/smaller/80%-there versus
+battle-tested/monolithic/complete. Neither is wrong.
 
 ```bash
-MDEXPORT_MERMAID=mmdc mdexport FILE.md --all
+MDEXPORT_MERMAID=mmdc mdexport FILE.md --all   # opt into full-fidelity diagrams
 ```
 
-Because a failed diagram is now isolated (not fatal), mixing supported and
-unsupported types under the mermaidx path degrades gracefully rather than aborting.
+**PDF — a lean single binary, or a mirror of the HTML.** `--pdf` goes Markdown → Typst:
+one small binary (no multi-GB TeX), fast, and able to emit archival **PDF/A** — but it
+styles the page its own way, so the PDF is a close cousin of the HTML, not a twin.
+`--pdf-from-html` prints the built HTML with a browser instead, so the PDF inherits the
+HTML's typography exactly — at the cost of depending on that browser. Archival and
+self-contained versus identical to what you see.
+
+**And which format outlives which?** The HTML is the copy I'd bet on: self-contained, no
+JavaScript, no network, system fonts — the plain text of twenty years ago, still rendering
+the same everywhere. PDF has the longer lineage and the better odds of being readable and
+printable in fifty years, precisely because the world is drowning in it. Keep the HTML to
+read; keep the PDF to archive; keep both — they're cheap.
+
+The defaults encode one bias — *take something modern and produce something boring and
+durable, without much fuss* — and the opt-ins are there for the times that bias costs you
+something you actually need.
 
 ## Files
 
@@ -94,14 +114,9 @@ every same-directory `.md` it links to (transitively, cycles handled), HTML only
 rewrites each `[x](other.md)` cross-link to `other.html` so the exported set stays
 navigable. Links to other directories and to URLs are left untouched.
 
-**Two PDF paths.** `--pdf` (and `--pdfa`) go Markdown → Typst: fast, dependency-light,
-archival, but the PDF uses Typst's own styling, so it doesn't match the HTML exactly.
-`--pdf-from-html` instead prints the *built HTML* with a headless browser, so the PDF
-inherits `typography.html` verbatim — code pills, measure, fonts, spacing all identical
-to what you see in the browser. It needs a Chromium-family browser (Chrome/Chromium/
-Edge/Brave, or the `chrome-headless-shell` that `mmdc` installs); point `MDEXPORT_CHROME`
-at one if it isn't auto-found. Prefer `--pdf-from-html` when you want the PDF to look
-like the HTML; keep `--pdf`/`--pdfa` for archival/offline builds.
+`--pdf-from-html` needs a Chromium-family browser (Chrome/Chromium/Edge/Brave, or the
+`chrome-headless-shell` that `mmdc` installs); set `MDEXPORT_CHROME` if it isn't
+auto-found. See [Two of everything](#two-of-everything) for when to prefer it over `--pdf`.
 
 ## Requirements
 
