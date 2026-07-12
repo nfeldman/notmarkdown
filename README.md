@@ -103,9 +103,11 @@ mdexport notes.md --pdf        # -> notes.pdf  (via Typst)
 mdexport notes.md --all        # both
 mdexport notes.md --pdfa       # -> notes.pdf as PDF/A-2b (archival, fonts embedded)
 mdexport notes.md --pdf-from-html  # -> notes.pdf by printing the HTML (browser, high fidelity)
+mdexport notes.md --epub       # -> notes.epub (portable ebook, diagrams + math embedded)
 mdexport notes.md --open       # build HTML and open it
 mdexport notes.md --strict     # abort the build if any diagram fails (default: placeholder)
 mdexport notes.md --follow     # also export every same-dir .md it links to (HTML, links rewritten)
+mdexport notes.md --bundle     # --follow, then zip the set into notes.zip
 mdexport notes.md --watch      # rebuild on every save (uses watchexec if present)
 ```
 
@@ -113,6 +115,14 @@ mdexport notes.md --watch      # rebuild on every save (uses watchexec if presen
 every same-directory `.md` it links to (transitively, cycles handled), HTML only, and
 rewrites each `[x](other.md)` cross-link to `other.html` so the exported set stays
 navigable. Links to other directories and to URLs are left untouched.
+
+**Bundling a set into one file.** `--bundle` runs `--follow`, then zips exactly that
+set (the reachable docs — not stray `.html` already in the directory) into `notes.zip`:
+the most portable multi-document container there is — unzip anywhere, open the entry
+page in any browser, and the rewritten links resolve offline. `--epub` instead packs a
+single document into an EPUB — a valid, battle-tested ZIP of XHTML with diagrams and
+math (MathML) embedded — for e-readers; it's reflowable, so it deliberately drops
+`typography.html` and lets the reader own the layout.
 
 `--pdf-from-html` needs a Chromium-family browser (Chrome/Chromium/Edge/Brave, or the
 `chrome-headless-shell` that `mmdc` installs); set `MDEXPORT_CHROME` if it isn't

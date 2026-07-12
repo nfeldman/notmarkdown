@@ -35,6 +35,11 @@ assert_count()     { local n; n=$(grep -oE "$2" "$1" | wc -l | tr -d ' '); [ "$n
 fixture() { printf '%s' "$2" > "$WORK/$1"; }
 # build FILE ARGS... -> BUILD_RC set; output written next to FILE
 build()   { "$MDEXPORT" "$WORK/$1" "${@:2}" >"$WORK/.log" 2>&1; BUILD_RC=$?; }
+# True if the DEFAULT renderer can actually render a flowchart in this environment.
+default_renderer_ok() {
+  printf '```mermaid\nflowchart LR\n A-->B\n```\n' > "$WORK/.rprobe.md"
+  "$MDEXPORT" "$WORK/.rprobe.md" --html >/dev/null 2>&1 && grep -q '<svg' "$WORK/.rprobe.html"
+}
 
 # --- preflight -------------------------------------------------------------
 printf "${_b}notmarkdown regression suite${_0}\n"
@@ -162,6 +167,78 @@ else
   assert_rc "$BUILD_RC" 0 "--pdf-from-html builds a browser PDF"
   assert_file "$WORK/ph.pdf"  "--pdf-from-html produced the PDF"
   assert_file "$WORK/ph.html" "--pdf-from-html also produced the source HTML"
+fi
+
+# --bundle: --follow, then zip EXACTLY the followed set. The sharp regressions to
+# catch: the bundle must contain the follow scope (not stray .html already in the
+# dir, not out-of-scope subdir/URL targets), and every cross-link must resolve to a
+# doc that is actually inside the bundle (i.e. it navigates offline).
+BND="$WORK/bnd"; mkdir -p "$BND/sub"
+printf '[b](b.md), [down](sub/c.md), [ext](https://x.example/z.md)\n' > "$BND/a.md"
+printf '# B\nback to [a](a.md).\n' > "$BND/b.md"   # cycle back to entry
+printf '# c\n' > "$BND/sub/c.md"
+printf '<html>stray</html>'       > "$BND/stray.html"   # pre-existing, unrelated
+"$MDEXPORT" "$BND/a.md" --bundle >"$WORK/.log" 2>&1; BUILD_RC=$?
+assert_rc "$BUILD_RC" 0 "--bundle builds and zips the set"
+assert_file "$BND/a.zip" "--bundle creates <entry>.zip"
+if python3 - "$BND/a.zip" 2>"$WORK/.perr" <<'PY'
+import sys, zipfile, re
+z = zipfile.ZipFile(sys.argv[1]); n = set(z.namelist())
+assert n == {"a.html", "b.html"}, f"bundle scope wrong (want a.html+b.html): {sorted(n)}"
+links = re.findall(r'href="([^"]+\.html)"', z.read("a.html").decode("utf-8", "replace"))
+assert links, "entry has no rewritten cross-links"
+assert all(l in n for l in links), f"cross-link escapes the bundle: {links}"
+PY
+then ok "--bundle == follow scope (no stray/subdir), every cross-link resolves inside it"
+else bad "--bundle scope / internal consistency" "$(cat "$WORK/.perr" 2>/dev/null | tail -1)"; fi
+ls "$BND"/*.pdf >/dev/null 2>&1 && bad "--bundle is HTML-only" "a PDF was produced" \
+                                || ok "--bundle is HTML-only (no PDF)"
+
+# --epub: a valid EPUB (mimetype/container), math as MathML, no raw fence, and —
+# when a renderer is available — the diagram embedded as an image resource.
+cat > "$WORK/ep.md" <<'PEOF'
+# Doc
+
+Prose paragraph. Inline math $E=mc^2$.
+
+```mermaid
+flowchart LR
+  A-->B
+```
+PEOF
+"$MDEXPORT" "$WORK/ep.md" --epub >"$WORK/.log" 2>&1; BUILD_RC=$?
+assert_rc "$BUILD_RC" 0 "--epub builds"
+assert_file "$WORK/ep.epub" "--epub produces the .epub"
+if python3 - "$WORK/ep.epub" 2>"$WORK/.perr" <<'PY'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1]); n = z.namelist()
+assert n[0] == "mimetype", f"first entry is {n[0]!r}, not 'mimetype'"
+assert z.read("mimetype") == b"application/epub+zip", "wrong mimetype content"
+assert "META-INF/container.xml" in n, "no META-INF/container.xml"
+x = b"".join(z.read(m) for m in n if m.endswith((".xhtml", ".html")))
+assert b"<math" in x, "math is not MathML in the epub"
+assert b"Prose paragraph" in x, "prose missing from the epub"
+assert b'class="mermaid"' not in x, "raw mermaid fence leaked into the epub"
+PY
+then ok "--epub is a valid EPUB (mimetype/container) with MathML math and no leak"
+else bad "--epub structure/content" "$(cat "$WORK/.perr" 2>/dev/null | tail -1)"; fi
+if default_renderer_ok; then
+  if python3 - "$WORK/ep.epub" 2>"$WORK/.perr" <<'PY'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+imgs = [m for m in z.namelist() if m.lower().endswith((".svg", ".png"))]
+assert imgs, "diagram not embedded as an image resource"
+PY
+  then ok "--epub embeds the diagram as an image resource"
+  else bad "--epub diagram embedding" "$(cat "$WORK/.perr" 2>/dev/null | tail -1)"; fi
+else
+  skp "--epub diagram embedding" "default renderer unavailable"
+fi
+if command -v epubcheck >/dev/null 2>&1; then
+  epubcheck "$WORK/ep.epub" >"$WORK/.log" 2>&1 && ok "--epub passes epubcheck" \
+                                               || bad "--epub epubcheck" "$(tail -3 "$WORK/.log")"
+else
+  skp "--epub epubcheck" "epubcheck not installed"
 fi
 
 # ===========================================================================
