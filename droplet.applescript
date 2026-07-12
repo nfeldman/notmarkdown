@@ -8,19 +8,34 @@
 -- Built by `make-droplet` with osacompile. Edit here, then rebuild.
 
 on open theItems
+	-- Ask once which format to produce, then apply it to everything dropped.
+	set formatChoice to choose from list {"HTML (self-contained)", "PDF", "PDF (matches HTML)", "EPUB", "HTML + PDF"} with title "notmarkdown" with prompt "Publish the dropped item(s) as:" default items {"HTML (self-contained)"} without multiple selections allowed
+	if formatChoice is false then return -- cancelled
+	set chosen to item 1 of formatChoice
+	set fmtFlag to ""
+	if chosen is "PDF" then
+		set fmtFlag to "--pdf"
+	else if chosen is "PDF (matches HTML)" then
+		set fmtFlag to "--pdf-from-html"
+	else if chosen is "EPUB" then
+		set fmtFlag to "--epub"
+	else if chosen is "HTML + PDF" then
+		set fmtFlag to "--all"
+	end if
+
 	set publishedCount to 0
 	set failures to {}
 	repeat with anItem in theItems
 		set itemPath to POSIX path of anItem
 		try
-			do shell script "export PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; mdexport " & quoted form of itemPath
+			do shell script "export PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; mdexport " & fmtFlag & " " & quoted form of itemPath
 			set publishedCount to publishedCount + 1
 		on error errMsg
 			set end of failures to itemPath & " — " & errMsg
 		end try
 	end repeat
 	if (count of failures) is 0 then
-		display notification "Published " & publishedCount & " item(s)." with title "notmarkdown"
+		display notification "Published " & publishedCount & " item(s) as " & chosen & "." with title "notmarkdown"
 	else
 		display dialog "notmarkdown could not publish:" & return & return & joinText(failures, return) buttons {"OK"} default button "OK" with icon caution
 	end if

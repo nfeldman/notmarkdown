@@ -315,11 +315,12 @@ files or folders onto:
 ./make-droplet                 # -> ~/Applications/notmarkdown.app
 ```
 
-Drop a file to get a sibling file; drop a folder to get a sibling folder (or one combined
-ebook with `--epub`). The app is built from `droplet.applescript` with `osacompile`, so it
-is version-controlled and rebuildable rather than assembled by hand — edit the source and
-run `make-droplet` again. It calls the same `mdexport` on your `PATH`, so it stays in step
-with the CLI. (On first launch, right-click the app and choose *Open* to clear Gatekeeper.)
+On a drop it asks which format to produce — HTML, PDF, EPUB, or both — and applies it to
+everything dropped: a file becomes a sibling file, a folder a sibling folder (or one
+combined ebook). The app is built from `droplet.applescript` with `osacompile`, so it is
+version-controlled and rebuildable rather than assembled by hand — edit the source and run
+`make-droplet` again. It calls the same `mdexport` on your `PATH`, so it stays in step with
+the CLI. (On first launch, right-click the app and choose *Open* to clear Gatekeeper.)
 
 ## Requirements
 
