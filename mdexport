@@ -33,6 +33,7 @@ SELF="${BASH_SOURCE[0]}"
 while [[ -L "$SELF" ]]; do SELF="$(readlink "$SELF")"; done
 ASSETS="$(cd "$(dirname "$SELF")" && pwd)"
 LUA="$ASSETS/mermaid.lua"
+MDLINKS="$ASSETS/mdlinks.lua"   # --follow link rewrite/discovery (no-op otherwise)
 HEADER="$ASSETS/typography.html"
 # svg-scope id-namespaces inline HTML SVGs so multiple diagrams don't collide.
 export MDEXPORT_SVGSCOPE="${MDEXPORT_SVGSCOPE:-$ASSETS/svg-scope}"
@@ -137,6 +138,7 @@ build_html() {
     --standalone \
     --embed-resources \
     --lua-filter="$LUA" \
+    --lua-filter="$MDLINKS" \
     --mathml \
     --include-in-header="$HEADER" \
     --output="$out"
@@ -183,30 +185,18 @@ run_once() {
 }
 
 # --- --follow: export a whole set of interlinked same-directory docs ---------
-# Print the same-directory *.md files an input links to (inline links only),
-# limited to bare names in the same directory — no path separators, no URLs — and
-# only those that actually exist. One per line, de-duplicated.
-discover_md_refs() {
-  local f="$1" d ref; d="$(dirname "$f")"
-  grep -oE '\]\([^)#/:]+\.md' "$f" 2>/dev/null | sed 's/^](//' | sort -u | while read -r ref; do
-    [[ -f "$d/$ref" ]] && printf '%s\n' "$ref"
-  done
-}
-
-# In a built HTML file, repoint same-directory X.md links at their X.html siblings
-# so the exported set is navigable. Only bare same-dir links match (URLs and paths
-# with slashes/colons are left alone); a code-block mention of "x.md" is rendered
-# text, not an href, so it is never rewritten.
-rewrite_md_links() {
-  sed -i.bak -E 's|href="([^"/:#]+)\.md(#[^"]*)?"|href="\1.html\2"|g' "$1" && rm -f "$1.bak"
-}
-
 # Breadth-first build of the input plus every same-directory doc reachable through
-# its markdown links (transitively). HTML only; cross-doc links are rewritten.
+# its markdown links (transitively). HTML only. Link discovery AND rewriting are
+# done in mdlinks.lua on the parsed AST (so ./ prefixes, reference-style links,
+# titles, #fragments and %-encoded names all work, code blocks are never followed,
+# and encoded path separators can't escape the directory); build_html writes each
+# doc's same-dir .md references, one per line, to $MDEXPORT_FOLLOW_OUT.
 follow_build() {
   TMP="$(mktemp -d)"
   trap '[[ -n "${TMP:-}" ]] && rm -rf "$TMP"' RETURN EXIT
   local want_open=$OPEN; OPEN=0          # open only the entry file, at the very end
+  local links="$TMP/follow-refs"
+  export MDEXPORT_FOLLOW_OUT="$links"
   local -a queue=("$IN") built=()
   local seen=" " f abs ref
   while [[ ${#queue[@]} -gt 0 ]]; do
@@ -216,10 +206,15 @@ follow_build() {
     seen+="$abs "
     [[ -f "$f" ]] || { info "skip (missing): $f"; continue; }
     IN="$f"; dir="$(dirname "$f")"; base="$(basename "${f%.*}")"
+    : > "$links"                                       # mdlinks.lua appends refs here
     build_html
-    rewrite_md_links "$dir/$base.html"
     built+=("$dir/$base.html")
-    while read -r ref; do queue+=("$dir/$ref"); done < <(discover_md_refs "$f")
+    while read -r ref; do
+      # Belt-and-braces: the filter already rejects separators, but never enqueue a
+      # ref that isn't a plain same-directory filename that actually exists.
+      case "$ref" in ''|*/*|.|..) continue ;; esac
+      [[ -f "$dir/$ref" ]] && queue+=("$dir/$ref")
+    done < "$links"
   done
   info "followed ${#built[@]} file(s)"
   [[ $want_open -eq 1 && ${#built[@]} -gt 0 ]] && open "${built[0]}"

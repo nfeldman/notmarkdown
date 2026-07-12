@@ -72,6 +72,7 @@ unsupported types under the mermaidx path degrades gracefully rather than aborti
 | `mermaid.lua` | Pandoc filter: collects, de-duplicates and batches every ` ```mermaid ` block, renders it per output format (inline SVG for HTML, hi-DPI PNG for the mmdc PDF path), and isolates a failed diagram to a visible placeholder. |
 | `mermaid-render` | The default browser-free Mermaid→SVG renderer (mermaidx + z-order/viewBox fixups). |
 | `svg-scope` | Namespaces every id in an inline SVG (per diagram occurrence) so multiple diagrams don't collide in one HTML document. |
+| `mdlinks.lua` | `--follow` only: an AST filter that rewrites same-dir `X.md` links to `X.html` and records them to follow (a no-op on ordinary builds). |
 | `typography.html` | Self-contained CSS: book-serif body, good measure/rhythm, math font, dark-mode aware. No web fonts. |
 
 ## Usage

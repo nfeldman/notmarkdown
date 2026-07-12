@@ -105,28 +105,48 @@ else
   skp "ToC/anchor PDF" "typst not installed"
 fi
 
-# --follow: build the entry doc plus every same-directory .md it links to
-# (transitively, cycles handled), HTML only, rewriting X.md links to X.html.
-fixture fa.md '# A
+# --follow: AST-based link discovery + rewriting. Covers bare and ./-prefixed
+# links, reference-style links, %-encoded (spaced) filenames, cycles, code-block
+# safety, subdir/URL exclusion, HTML-only, and directory-traversal protection.
+FS="$WORK/fset"; mkdir -p "$FS/sub" "$WORK/victim"
+printf '# SECRET — must never be exported\n' > "$WORK/victim/secret.md"
+cat > "$FS/fa.md" <<'FEOF'
+[bare](fb.md), [dot](./frel.md), [refstyle][r], [space](my%20note.md),
+[url](https://x.example/z.md), [sub](sub/c.md),
+[trav-plain](../victim/secret.md), [trav-enc](%2e%2e%2fvictim%2fsecret.md).
 
-Onward to [B](fb.md) and an [external](https://x.example/z.md) and [down](sub/c.md).
-'
-fixture fb.md '# B
+```
+code [trap](trap.md) must not be followed
+```
 
-Back to [A](fa.md).
-'
-mkdir -p "$WORK/sub"; printf '# C (subdir)\n' > "$WORK/sub/c.md"
-"$MDEXPORT" "$WORK/fa.md" --follow >"$WORK/.log" 2>&1; BUILD_RC=$?
+[r]: fref.md
+FEOF
+printf '# B\nback to [a](fa.md).\n' > "$FS/fb.md"   # cycle back to entry
+printf '# rel\n'   > "$FS/frel.md"
+printf '# ref\n'   > "$FS/fref.md"
+printf '# space\n' > "$FS/my note.md"
+printf '# trap\n'  > "$FS/trap.md"
+printf '# c\n'     > "$FS/sub/c.md"
+"$MDEXPORT" "$FS/fa.md" --follow >"$WORK/.log" 2>&1; BUILD_RC=$?
 assert_rc "$BUILD_RC" 0 "--follow builds the linked set"
-assert_file "$WORK/fa.html" "--follow built the entry doc"
-assert_file "$WORK/fb.html" "--follow built the referenced same-dir doc"
-assert_grep "$WORK/fa.html" 'href="fb.html"'          "--follow rewrites same-dir .md links to .html"
-assert_grep "$WORK/fa.html" 'href="https://x.example/z.md"' "--follow leaves external URLs untouched"
-assert_grep "$WORK/fa.html" 'href="sub/c.md"'         "--follow leaves subdir links untouched"
-[ -f "$WORK/sub/c.html" ] && bad "--follow does not descend into subdirs" "built sub/c.html" \
-                          || ok "--follow does not descend into subdirs"
-{ [ -f "$WORK/fa.pdf" ] || [ -f "$WORK/fb.pdf" ]; } && bad "--follow is HTML-only" "a PDF was produced for a followed doc" \
-                                                    || ok "--follow is HTML-only (no PDF for followed docs)"
+assert_file "$FS/fa.html"      "--follow builds the entry doc"
+assert_file "$FS/fb.html"      "--follow follows a bare same-dir link (cycle handled)"
+assert_file "$FS/frel.html"    "--follow follows a ./-prefixed link"
+assert_file "$FS/fref.html"    "--follow follows a reference-style link"
+assert_file "$FS/my note.html" "--follow follows a %-encoded (spaced) filename"
+assert_grep "$FS/fa.html" 'href="fb.html"'        "--follow rewrites a bare .md link"
+assert_grep "$FS/fa.html" 'href="./frel.html"'    "--follow rewrites a ./ link"
+assert_grep "$FS/fa.html" 'href="my%20note.html"' "--follow rewrites an encoded link, keeps encoding"
+assert_grep "$FS/fa.html" 'href="https://x.example/z.md"' "--follow leaves URLs untouched"
+assert_grep "$FS/fa.html" 'href="sub/c.md"'       "--follow leaves subdir links untouched"
+[ -f "$FS/trap.html" ]  && bad "--follow ignores code-block links" "built trap.html" \
+                        || ok "--follow ignores code-block links"
+[ -f "$FS/sub/c.html" ] && bad "--follow does not descend into subdirs" "built sub/c.html" \
+                        || ok "--follow does not descend into subdirs"
+[ -f "$WORK/victim/secret.html" ] && bad "--follow blocks directory traversal" "exported victim/secret.html" \
+                                  || ok "--follow blocks directory traversal (plain + encoded)"
+{ [ -f "$FS/fa.pdf" ] || [ -f "$FS/fb.pdf" ]; } && bad "--follow is HTML-only" "a PDF was produced for a followed doc" \
+                                                || ok "--follow is HTML-only (no PDF for followed docs)"
 
 # ===========================================================================
 # Per-renderer tests. Each renderer is probed first; a failing probe -> SKIP.
