@@ -108,15 +108,15 @@ Homebrew and `mermaidx` via uv/pipx if missing, then symlinks `mdexport` into
 `~/.local/bin` (backing up anything already there) and checks it's on your PATH.
 Then: `mdexport notes.md`.
 
-<details><summary>Or do it by hand</summary>
+**Or do it by hand:**
 
 ```bash
 brew install pandoc typst
-uv tool install mermaidx            # or: pipx install mermaidx
+npm i -g @mermaid-js/mermaid-cli    # default diagram renderer (mmdc)
+uv tool install mermaidx            # optional: browser-free path (or: pipx install mermaidx)
 mkdir -p ~/.local/bin
 ln -s "$PWD/mdexport" ~/.local/bin/mdexport   # mdexport resolves this back to the repo for its assets
 ```
-</details>
 
 **Uninstall (the exit is one symlink):**
 
