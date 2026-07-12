@@ -1,3 +1,7 @@
 # mdexport writes its output next to the source .md — don't commit generated docs.
 *.html
 *.pdf
+
+# Python bytecode from the test suite.
+__pycache__/
+*.pyc
