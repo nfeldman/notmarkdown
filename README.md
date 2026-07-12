@@ -83,8 +83,14 @@ mdexport notes.md --all        # both
 mdexport notes.md --pdfa       # -> notes.pdf as PDF/A-2b (archival, fonts embedded)
 mdexport notes.md --open       # build HTML and open it
 mdexport notes.md --strict     # abort the build if any diagram fails (default: placeholder)
+mdexport notes.md --follow     # also export every same-dir .md it links to (HTML, links rewritten)
 mdexport notes.md --watch      # rebuild on every save (uses watchexec if present)
 ```
+
+`--follow` exports a whole set of interlinked notes at once: it builds the input and
+every same-directory `.md` it links to (transitively, cycles handled), HTML only, and
+rewrites each `[x](other.md)` cross-link to `other.html` so the exported set stays
+navigable. Links to other directories and to URLs are left untouched.
 
 ## Requirements
 

@@ -105,6 +105,29 @@ else
   skp "ToC/anchor PDF" "typst not installed"
 fi
 
+# --follow: build the entry doc plus every same-directory .md it links to
+# (transitively, cycles handled), HTML only, rewriting X.md links to X.html.
+fixture fa.md '# A
+
+Onward to [B](fb.md) and an [external](https://x.example/z.md) and [down](sub/c.md).
+'
+fixture fb.md '# B
+
+Back to [A](fa.md).
+'
+mkdir -p "$WORK/sub"; printf '# C (subdir)\n' > "$WORK/sub/c.md"
+"$MDEXPORT" "$WORK/fa.md" --follow >"$WORK/.log" 2>&1; BUILD_RC=$?
+assert_rc "$BUILD_RC" 0 "--follow builds the linked set"
+assert_file "$WORK/fa.html" "--follow built the entry doc"
+assert_file "$WORK/fb.html" "--follow built the referenced same-dir doc"
+assert_grep "$WORK/fa.html" 'href="fb.html"'          "--follow rewrites same-dir .md links to .html"
+assert_grep "$WORK/fa.html" 'href="https://x.example/z.md"' "--follow leaves external URLs untouched"
+assert_grep "$WORK/fa.html" 'href="sub/c.md"'         "--follow leaves subdir links untouched"
+[ -f "$WORK/sub/c.html" ] && bad "--follow does not descend into subdirs" "built sub/c.html" \
+                          || ok "--follow does not descend into subdirs"
+{ [ -f "$WORK/fa.pdf" ] || [ -f "$WORK/fb.pdf" ]; } && bad "--follow is HTML-only" "a PDF was produced for a followed doc" \
+                                                    || ok "--follow is HTML-only (no PDF for followed docs)"
+
 # ===========================================================================
 # Per-renderer tests. Each renderer is probed first; a failing probe -> SKIP.
 # ===========================================================================

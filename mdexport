@@ -18,6 +18,7 @@
 #   mdexport FILE.md --pdfa          # -> FILE.pdf as PDF/A-2b (archival)
 #   mdexport FILE.md --html --open   # build HTML and open it
 #   mdexport FILE.md --strict        # abort the build if ANY diagram fails
+#   mdexport FILE.md --follow        # also build every same-dir .md it links to (HTML)
 #   mdexport FILE.md --watch         # rebuild (default format) on every save
 #
 # By default a diagram that fails to render is isolated to a visible placeholder
@@ -61,7 +62,7 @@ info() { printf '\033[1;34m==>\033[0m %s\n' "$1" >&2; }
 ok()   { printf '\033[1;32m ok\033[0m %s\n' "$1" >&2; }
 
 # --- parse args ------------------------------------------------------------
-IN=""; DO_HTML=0; DO_PDF=0; PDFA=0; OPEN=0; WATCH=0; STRICT=0
+IN=""; DO_HTML=0; DO_PDF=0; PDFA=0; OPEN=0; WATCH=0; STRICT=0; FOLLOW=0
 BUILD_ARGS=()   # args minus --watch, for the watcher to re-invoke a single build
 for a in "$@"; do
   case "$a" in
@@ -71,6 +72,7 @@ for a in "$@"; do
     --all)  DO_HTML=1; DO_PDF=1; BUILD_ARGS+=("$a") ;;
     --open) OPEN=1; BUILD_ARGS+=("$a") ;;
     --strict) STRICT=1; BUILD_ARGS+=("$a") ;;
+    --follow) FOLLOW=1; BUILD_ARGS+=("$a") ;;
     --watch) WATCH=1 ;;
     -*) die "unknown option: $a" ;;
     *) IN="$a"; BUILD_ARGS+=("$a") ;;
@@ -80,10 +82,16 @@ done
 # Default: mermaid.lua isolates a failed diagram to a visible placeholder and the
 # rest of the document still renders. The filter reads this via the environment.
 [[ $STRICT -eq 1 ]] && export MDEXPORT_STRICT=1
-[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--strict|--watch]"
+[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--strict|--follow|--watch]"
 [[ -f "$IN" ]] || die "not found: $IN"
 # Default output is HTML unless only --pdf/--pdfa was asked for.
 [[ $DO_HTML -eq 0 && $DO_PDF -eq 0 ]] && DO_HTML=1
+# --follow exports a whole set of interlinked same-directory docs; only HTML makes
+# sense there (cross-doc navigation), so it forces HTML-only.
+if [[ $FOLLOW -eq 1 ]]; then
+  [[ $DO_PDF -eq 1 ]] && info "--follow builds HTML only; ignoring the PDF request"
+  DO_HTML=1; DO_PDF=0; PDFA=0
+fi
 
 command -v pandoc >/dev/null 2>&1 || die "pandoc not found (brew install pandoc)"
 # Check whichever renderer is selected (first token, in case it carries args).
@@ -174,7 +182,53 @@ run_once() {
   return 0   # never let a false [[ ]] above become this function's (and the script's) exit status
 }
 
-if [[ $WATCH -eq 1 ]]; then
+# --- --follow: export a whole set of interlinked same-directory docs ---------
+# Print the same-directory *.md files an input links to (inline links only),
+# limited to bare names in the same directory — no path separators, no URLs — and
+# only those that actually exist. One per line, de-duplicated.
+discover_md_refs() {
+  local f="$1" d ref; d="$(dirname "$f")"
+  grep -oE '\]\([^)#/:]+\.md' "$f" 2>/dev/null | sed 's/^](//' | sort -u | while read -r ref; do
+    [[ -f "$d/$ref" ]] && printf '%s\n' "$ref"
+  done
+}
+
+# In a built HTML file, repoint same-directory X.md links at their X.html siblings
+# so the exported set is navigable. Only bare same-dir links match (URLs and paths
+# with slashes/colons are left alone); a code-block mention of "x.md" is rendered
+# text, not an href, so it is never rewritten.
+rewrite_md_links() {
+  sed -i.bak -E 's|href="([^"/:#]+)\.md(#[^"]*)?"|href="\1.html\2"|g' "$1" && rm -f "$1.bak"
+}
+
+# Breadth-first build of the input plus every same-directory doc reachable through
+# its markdown links (transitively). HTML only; cross-doc links are rewritten.
+follow_build() {
+  TMP="$(mktemp -d)"
+  trap '[[ -n "${TMP:-}" ]] && rm -rf "$TMP"' RETURN EXIT
+  local want_open=$OPEN; OPEN=0          # open only the entry file, at the very end
+  local -a queue=("$IN") built=()
+  local seen=" " f abs ref
+  while [[ ${#queue[@]} -gt 0 ]]; do
+    f="${queue[0]}"; queue=("${queue[@]:1}")
+    abs="$(cd "$(dirname "$f")" 2>/dev/null && pwd)/$(basename "$f")"
+    case "$seen" in *" $abs "*) continue ;; esac      # already built — skip cycles
+    seen+="$abs "
+    [[ -f "$f" ]] || { info "skip (missing): $f"; continue; }
+    IN="$f"; dir="$(dirname "$f")"; base="$(basename "${f%.*}")"
+    build_html
+    rewrite_md_links "$dir/$base.html"
+    built+=("$dir/$base.html")
+    while read -r ref; do queue+=("$dir/$ref"); done < <(discover_md_refs "$f")
+  done
+  info "followed ${#built[@]} file(s)"
+  [[ $want_open -eq 1 && ${#built[@]} -gt 0 ]] && open "${built[0]}"
+  return 0
+}
+
+if [[ $FOLLOW -eq 1 ]]; then
+  follow_build
+elif [[ $WATCH -eq 1 ]]; then
   info "watching $IN (Ctrl-C to stop)"
   if command -v watchexec >/dev/null 2>&1; then
     exec watchexec --watch "$IN" -- "$0" "${BUILD_ARGS[@]}"
