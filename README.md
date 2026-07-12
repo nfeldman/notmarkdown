@@ -23,41 +23,42 @@ error to fix, so watch the build output.
 ## The pipeline (why these tools)
 
 ```
-Markdown ─▶ pandoc ─▶ mermaid.lua ─┬─ HTML ─▶ mmdc ─▶ inline SVG   ── self-contained .html (no JS)
-                                   └─ PDF  ─▶ mmdc ─▶ hi-DPI PNG ─▶ Typst ─▶ PDF / PDF-A
-                    (prose · tables · math: MathML in HTML, native Typst in PDF)
+                            default: mermaidx (browser-free) ─▶ inline SVG (both formats)
+Markdown ─▶ pandoc ─▶ mermaid.lua ─┤
+                            opt-in:  mmdc (headless Chrome) ─┬─ HTML ─▶ inline SVG
+                                                             └─ PDF  ─▶ hi-DPI PNG
+   ├─ HTML5 + MathML + inline SVG        ── self-contained .html (no JS)
+   └─ Typst ─▶ PDF / PDF-A               ── archival, fonts embedded
 ```
 
 - **pandoc** — the durable universal converter; Markdown stays your source of truth.
-  Its typed AST is the segment-and-reassemble engine: `mermaid.lua` rewrites only the
-  diagram blocks; everything else flows straight to the two writers.
+  Its typed AST is the segment-and-reassemble engine: `mermaid.lua` collects and
+  batches only the diagram blocks; everything else flows straight to the two writers.
 - **Typst** — lean single-binary PDF engine (no multi-GB TeX). Renders LaTeX-style
   math, bundles good math fonts, and emits archival **PDF/A**. ~30× faster than XeLaTeX.
 - **MathML** for HTML math — a W3C standard that renders natively in every 2026
   browser with **no JavaScript** and no network. 100× smaller than a KaTeX/MathJax
   bundle and won't rot when a pinned JS lib does. `typography.html` names STIX Two Math
   (present on macOS) so Chromium — which ships no math font — renders it too.
-- **mmdc** (official mermaid-cli) as the default diagram renderer — the only renderer
-  that covers *every* Mermaid diagram type at full fidelity. Each block is rendered in
-  its authoritative engine and each output format gets the artifact it renders
-  correctly: **inline SVG for HTML** (a unique `--svgId` per diagram keeps multiple
-  diagrams from colliding) and a **high-DPI PNG for the PDF** (Typst's SVG engine
-  silently drops `<foreignObject>` labels, so we embed browser pixels it can't mangle).
+- **mermaidx** (browser-free) is the **default** diagram renderer — it runs the real
+  Mermaid v11 JS in an embedded engine with **no headless Chrome**, the single biggest
+  long-term-fragility source here. It is SVG-only and covers ~5 diagram types
+  (flowchart, sequence, ER, gitGraph, timeline); any other type falls back to a visible
+  placeholder instead of aborting the build. Inline SVGs are id-namespaced (`svg-scope`)
+  so multiple diagrams never collide in one document.
 
 ### The one honest tradeoff
 
-Full fidelity means **headless Chrome** (`mmdc`) by default: a ~170 MB Chromium
-download that is the classic thing to break on an OS/toolchain bump — the one place
-this tool trades durability for correctness, because it is the only renderer that
-handles every diagram type. It is quarantined to the diagram-render step.
-
-**Prefer no Chrome?** Opt into the browser-free **mermaidx** wrapper — it runs the
-real Mermaid v11 JS in an embedded engine (no Puppeteer) but is SVG-only and covers
-~5 diagram types (flowchart, sequence, ER, gitGraph, timeline); other types fall back
-to a placeholder. No code change:
+Full fidelity across *every* diagram type means **headless Chrome** (`mmdc`, the
+official mermaid-cli) — a ~170 MB Chromium download that is the classic thing to break
+on an OS/toolchain bump. So it is **opt-in**, not the default. When you do opt in, the
+filter renders the whole document in one batched launch and feeds each output format
+the artifact it displays correctly: inline SVG for HTML, and a **high-DPI PNG for the
+PDF** (Typst's SVG engine silently drops mmdc's `<foreignObject>` labels, so we embed
+browser pixels it can't mangle). One env var, no code change:
 
 ```bash
-MDEXPORT_MERMAID="$PWD/mermaid-render" mdexport FILE.md --all
+MDEXPORT_MERMAID=mmdc mdexport FILE.md --all
 ```
 
 Because a failed diagram is now isolated (not fatal), mixing supported and
@@ -68,8 +69,9 @@ unsupported types under the mermaidx path degrades gracefully rather than aborti
 | File | Role |
 |------|------|
 | `mdexport` | The CLI. Orchestrates pandoc → HTML/PDF, runs the no-leak check. `--strict` for all-or-nothing. |
-| `mermaid.lua` | Pandoc filter: renders each ` ```mermaid ` block per output format (inline SVG for HTML, hi-DPI PNG for PDF); isolates a failed diagram to a visible placeholder. |
-| `mermaid-render` | Opt-in browser-free Mermaid→SVG (mermaidx + z-order/viewBox fixups). Select via `MDEXPORT_MERMAID`. |
+| `mermaid.lua` | Pandoc filter: collects, de-duplicates and batches every ` ```mermaid ` block, renders it per output format (inline SVG for HTML, hi-DPI PNG for the mmdc PDF path), and isolates a failed diagram to a visible placeholder. |
+| `mermaid-render` | The default browser-free Mermaid→SVG renderer (mermaidx + z-order/viewBox fixups). |
+| `svg-scope` | Namespaces every id in an inline SVG (per diagram occurrence) so multiple diagrams don't collide in one HTML document. |
 | `typography.html` | Self-contained CSS: book-serif body, good measure/rhythm, math font, dark-mode aware. No web fonts. |
 
 ## Usage
@@ -87,10 +89,11 @@ mdexport notes.md --watch      # rebuild on every save (uses watchexec if presen
 ## Requirements
 
 - **pandoc** and **typst** — `brew install pandoc typst`
-- **mmdc** (default diagram renderer) — `npm i -g @mermaid-js/mermaid-cli`; first run
-  fetches `chrome-headless-shell` (~170 MB, one-time)
-- **mermaidx** (optional — only for the browser-free `MDEXPORT_MERMAID` path) —
-  `uv tool install mermaidx` (or `pipx install mermaidx`); `python3` drives its SVG fixups
+- **mermaidx** (default diagram renderer, browser-free) — `uv tool install mermaidx`
+  (or `pipx install mermaidx`)
+- **python3** — drives `mermaid-render`'s SVG fixups and `svg-scope`'s id-namespacing
+- **mmdc** (optional — full-fidelity `MDEXPORT_MERMAID=mmdc` path) —
+  `npm i -g @mermaid-js/mermaid-cli`; first run fetches `chrome-headless-shell` (~170 MB)
 - macOS-oriented: `--open` uses `open`, and the `--watch` fallback uses BSD `stat -f %m`.
   On Linux, swap those two lines (`xdg-open`, `stat -c %Y`).
 
@@ -112,8 +115,8 @@ Then: `mdexport notes.md`.
 
 ```bash
 brew install pandoc typst
-npm i -g @mermaid-js/mermaid-cli    # default diagram renderer (mmdc)
-uv tool install mermaidx            # optional: browser-free path (or: pipx install mermaidx)
+uv tool install mermaidx            # default diagram renderer (or: pipx install mermaidx)
+npm i -g @mermaid-js/mermaid-cli    # optional: MDEXPORT_MERMAID=mmdc full-fidelity path
 mkdir -p ~/.local/bin
 ln -s "$PWD/mdexport" ~/.local/bin/mdexport   # mdexport resolves this back to the repo for its assets
 ```

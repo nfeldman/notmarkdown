@@ -28,6 +28,9 @@
   pre { background: rgba(128,128,128,0.12); padding: 1rem; overflow-x: auto; border-radius: 6px; line-height: 1.45; }
   :not(pre) > code { background: rgba(128,128,128,0.15); padding: 0.1em 0.35em; border-radius: 4px; }
   img, svg { max-width: 100%; height: auto; }
+  /* Diagrams are SVGs, which default to display:inline and would otherwise flow
+     side by side like text; make each a centered block so they stack. */
+  svg { display: block; margin: 1.25rem auto; }
   table { border-collapse: collapse; margin: 1em 0; }
   th, td { border: 1px solid rgba(128,128,128,0.4); padding: 0.4em 0.7em; text-align: left; }
   blockquote { border-left: 3px solid rgba(128,128,128,0.5); margin: 1em 0; padding-left: 1rem; opacity: 0.85; }

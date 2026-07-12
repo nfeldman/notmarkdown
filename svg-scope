@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""svg-scope — namespace every id (and keyframe) in one Mermaid SVG with a caller-
+supplied prefix, so multiple diagrams — even byte-identical ones — can be inlined
+into a single HTML document without colliding.
+
+Both renderers emit FIXED ids (mmdc: id="my-svg"…, mermaidx: id="gd1"…) plus
+id-scoped CSS (#my-svg / #gd1 { … }) and shared @keyframes names. Inlining two
+diagrams into one DOM then yields duplicate ids, cross-diagram url(#…) marker
+references, and colliding animations. This rewrites, with PREFIX:
+  • every  id="X"  and every #X reference (url(#X), href/xlink:href="#X", CSS #X),
+    but only when X is a real id — so hex colours (#0f0) are left untouched; and
+  • every  @keyframes NAME  together with the  animation[-name]: … NAME  that uses it.
+
+The prefix is supplied by the caller (the filter uses a per-occurrence counter),
+which keeps repeated identical diagrams distinct. Reads one file, writes to stdout.
+
+Usage: svg-scope PREFIX FILE.svg      # scoped SVG on stdout
+"""
+import sys
+import re
+
+_ID_ATTR = re.compile(r'\bid="([^"]+)"')
+# A #reference to an id must start like a valid id (letter/underscore), so a
+# numeric hex colour such as #0f0 never matches on its first character.
+_HASH_REF = re.compile(r'#([A-Za-z_][\w:.\-]*)')
+_KEYFRAMES = re.compile(r'@keyframes\s+([\w-]+)')
+
+
+def scope(svg, prefix):
+    ids = set(_ID_ATTR.findall(svg))
+    keyframes = set(_KEYFRAMES.findall(svg))
+    if ids:
+        svg = _ID_ATTR.sub(lambda m: 'id="' + prefix + m.group(1) + '"', svg)
+        svg = _HASH_REF.sub(
+            lambda m: '#' + prefix + m.group(1) if m.group(1) in ids else m.group(0),
+            svg)
+    for name in keyframes:
+        esc = re.escape(name)
+        svg = re.sub(r'(@keyframes\s+)' + esc + r'\b', r'\g<1>' + prefix + name, svg)
+        # animation shorthand or animation-name that references this keyframe
+        svg = re.sub(r'(animation(?:-name)?\s*:[^;{}]*?\b)' + esc + r'\b',
+                     r'\g<1>' + prefix + name, svg)
+    return svg
+
+
+def main(argv):
+    if len(argv) != 2:
+        sys.stderr.write('usage: svg-scope PREFIX FILE.svg\n')
+        return 2
+    prefix, path = argv
+    with open(path, encoding='utf-8') as fh:
+        sys.stdout.write(scope(fh.read(), prefix))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

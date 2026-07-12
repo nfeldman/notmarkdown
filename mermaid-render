@@ -88,5 +88,9 @@ if xs and root.get('viewBox'):                               # (2) expand viewBo
     if root.get('style'):                                    # drop the too-small max-width cap
         root.set('style', re.sub(r'max-width:[^;]*;?', '', root.get('style')))
 
-tree.write(path)
+# Only rewrite the file if a fixup actually changed something — avoids an
+# unnecessary ElementTree round-trip (and its corruption surface) on diagram
+# types with no node/label-container structure (e.g. sequence diagrams).
+if reordered or xs:
+    tree.write(path)
 PY

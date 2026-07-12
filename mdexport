@@ -33,16 +33,28 @@ while [[ -L "$SELF" ]]; do SELF="$(readlink "$SELF")"; done
 ASSETS="$(cd "$(dirname "$SELF")" && pwd)"
 LUA="$ASSETS/mermaid.lua"
 HEADER="$ASSETS/typography.html"
+# svg-scope id-namespaces inline HTML SVGs so multiple diagrams don't collide.
+export MDEXPORT_SVGSCOPE="${MDEXPORT_SVGSCOPE:-$ASSETS/svg-scope}"
 
 # ~/.local/bin holds mermaidx (pip --user); make sure it resolves.
 export PATH="$HOME/.local/bin:$PATH"
 
-# Mermaid renderer the filter shells out to. Default: mmdc (official mermaid-cli,
-# headless Chrome) — the only renderer covering every diagram type at full
-# fidelity; the filter feeds it per-format artifacts (inline SVG for HTML, hi-DPI
-# PNG for PDF). Opt out to the browser-free mermaidx wrapper (no Chrome, SVG-only,
-# ~5 diagram types) with MDEXPORT_MERMAID="$ASSETS/mermaid-render".
-export MDEXPORT_MERMAID="${MDEXPORT_MERMAID:-mmdc}"
+# Mermaid renderer the filter shells out to. Default: the browser-free mermaidx
+# wrapper (no headless Chrome — the durable choice; SVG-only, ~5 diagram types,
+# other types fall back to a visible placeholder). Opt in to full fidelity across
+# every diagram type with the official mermaid-cli: MDEXPORT_MERMAID=mmdc (fetches
+# ~170 MB chrome-headless-shell once); the filter then feeds it per-format
+# artifacts (inline SVG for HTML, hi-DPI PNG for PDF) and batches the whole doc.
+export MDEXPORT_MERMAID="${MDEXPORT_MERMAID:-$ASSETS/mermaid-render}"
+# Renderer KIND drives per-format behavior (mmdc: PNG-for-PDF + whole-doc batch).
+# Guessed from the renderer name; set MDEXPORT_MERMAID_KIND=mmdc|svg to force it.
+if [[ -z "${MDEXPORT_MERMAID_KIND:-}" ]]; then
+  case "${MDEXPORT_MERMAID##*/}" in
+    mmdc*) MDEXPORT_MERMAID_KIND=mmdc ;;
+    *)     MDEXPORT_MERMAID_KIND=svg  ;;
+  esac
+fi
+export MDEXPORT_MERMAID_KIND
 
 die() { printf '\033[1;31mmdexport:\033[0m %s\n' "$1" >&2; exit 1; }
 info() { printf '\033[1;34m==>\033[0m %s\n' "$1" >&2; }
@@ -77,7 +89,7 @@ command -v pandoc >/dev/null 2>&1 || die "pandoc not found (brew install pandoc)
 # Check whichever renderer is selected (first token, in case it carries args).
 RENDERER_BIN="${MDEXPORT_MERMAID%% *}"
 command -v "$RENDERER_BIN" >/dev/null 2>&1 || die "mermaid renderer '$RENDERER_BIN' not found \
-(default is mmdc: 'npm i -g @mermaid-js/mermaid-cli'; or set MDEXPORT_MERMAID to the mermaidx wrapper)"
+(default is the mermaidx wrapper — 'uv tool install mermaidx'; or set MDEXPORT_MERMAID=mmdc for full fidelity)"
 if [[ $DO_PDF -eq 1 ]]; then
   command -v typst >/dev/null 2>&1 || die "typst not found (brew install typst)"
 fi
