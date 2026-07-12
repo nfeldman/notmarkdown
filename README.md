@@ -170,3 +170,24 @@ rm ~/.local/bin/mdexport
 uv tool uninstall mermaidx          # or: pipx uninstall mermaidx
 brew uninstall pandoc typst
 ```
+
+## Using it from an AI
+
+Markdown is the churn; this tool is the *publish* step. The judgment of **when** to
+reach for it — an explicit action, plus something an assistant offers when it has just
+generated a document worth keeping — lives in a **Claude Code skill** at
+[`.claude/skills/publish`](.claude/skills/publish/SKILL.md). It shells out to `mdexport`
+and encodes one rule above all: **never auto-publish a draft; publish only when asked,
+and otherwise just offer.** Make it available everywhere by symlinking it alongside the
+CLI:
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s "$PWD/.claude/skills/publish" ~/.claude/skills/publish
+```
+
+An **MCP server** isn't required for shell-capable agents (Claude Code, etc. — the skill
++ CLI is the whole story). It's worth adding only to reach clients that *can't* run a
+shell (e.g. Claude Desktop): it would wrap `mdexport` as one `publish_markdown` tool
+(input: Markdown text or a path + a format; output: the artifact), carrying the same
+"explicit action / offer-don't-auto-run" guidance in its tool description.
