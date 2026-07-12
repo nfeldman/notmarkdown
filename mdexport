@@ -124,7 +124,7 @@ build_html() {
   local out="$dir/$base.html"
   info "HTML  $IN -> $out"
   MDEXPORT_TMP="$TMP" pandoc "$IN" \
-    --from=markdown+tex_math_dollars+tex_math_single_backslash \
+    --from=markdown+tex_math_dollars+tex_math_single_backslash+gfm_auto_identifiers \
     --to=html5 \
     --standalone \
     --embed-resources \
@@ -144,7 +144,7 @@ build_pdf() {
     info "PDF/A $IN -> $out"
     local typ="$TMP/$base.typ"
     MDEXPORT_TMP="$TMP" pandoc "$IN" \
-      --from=markdown+tex_math_dollars+tex_math_single_backslash \
+      --from=markdown+tex_math_dollars+tex_math_single_backslash+gfm_auto_identifiers \
       --to=typst \
       --lua-filter="$LUA" \
       --output="$typ"
@@ -154,7 +154,7 @@ build_pdf() {
   else
     info "PDF   $IN -> $out"
     MDEXPORT_TMP="$TMP" pandoc "$IN" \
-      --from=markdown+tex_math_dollars+tex_math_single_backslash \
+      --from=markdown+tex_math_dollars+tex_math_single_backslash+gfm_auto_identifiers \
       --lua-filter="$LUA" \
       --pdf-engine=typst \
       --output="$out"

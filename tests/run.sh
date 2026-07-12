@@ -84,6 +84,27 @@ build plain.md --html
 assert_rc "$BUILD_RC" 0 "prose-only (zero-diagram) doc builds"
 assert_no_grep "$WORK/plain.html" 'src="https?://|href="https?://[^"]*\.(png|jpg|svg|css|js)"' "HTML is self-contained (no remote resources)"
 
+# GitHub-style ToC anchors: LLMs write `[X](#1-x)` for `## 1. X`. Heading ids must
+# use GitHub's scheme (keep the number) so the ToC resolves — and so the Typst PDF
+# doesn't die on a #link to a nonexistent label.
+fixture toc.md '# Doc
+
+- [First Section](#1-first-section)
+
+## 1. First Section
+
+Body.
+'
+build toc.md --html
+assert_rc "$BUILD_RC" 0 "ToC/anchor doc builds (HTML)"
+assert_grep "$WORK/toc.html" 'id="1-first-section"' "GitHub-style heading id keeps the number (ToC resolves)"
+if [ "$HAVE_TYPST" -eq 1 ]; then
+  build toc.md --pdf
+  assert_rc "$BUILD_RC" 0 "ToC/anchor doc builds (PDF — no dangling Typst label)"
+else
+  skp "ToC/anchor PDF" "typst not installed"
+fi
+
 # ===========================================================================
 # Per-renderer tests. Each renderer is probed first; a failing probe -> SKIP.
 # ===========================================================================
