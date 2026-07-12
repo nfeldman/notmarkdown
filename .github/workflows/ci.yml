@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pandoc — pinned .deb (need >=3.0 for the Typst writer; apt can lag).
+      - name: Install pandoc
+        run: |
+          curl -fsSL https://github.com/jgm/pandoc/releases/download/3.10/pandoc-3.10-1-amd64.deb -o /tmp/pandoc.deb
+          sudo dpkg -i /tmp/pandoc.deb
+          pandoc --version | head -1
+
+      # typst — pinned single binary (fits the "durable, pinned" ethos; no cargo build).
+      - name: Install typst
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.0/typst-x86_64-unknown-linux-musl.tar.xz \
+            | tar -xJ -C /tmp
+          sudo mv /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/
+          typst --version
+
+      # mermaidx — the default browser-free renderer (pipx is preinstalled on the runner).
+      - name: Install mermaidx
+        run: |
+          pipx install mermaidx
+          mermaidx --version || true
+
+      # mmdc — the opt-in full-fidelity renderer. The runner ships Chrome's shared
+      # libs (Chrome is preinstalled), so bundled chrome-headless-shell launches.
+      # If it can't, the suite's probe SKIPs the mmdc tests rather than failing.
+      - name: Install mermaid-cli (mmdc)
+        run: |
+          npm i -g @mermaid-js/mermaid-cli
+          mmdc --version || true
+
+      - name: Run regression suite
+        run: bash tests/run.sh
