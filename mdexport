@@ -234,7 +234,14 @@ MDEXPORT_CHROME at a browser binary."
 build_epub() {
   local out="$dir/$base.epub"
   info "EPUB  $IN -> $out"
-  MDEXPORT_TMP="$TMP" pandoc "$IN" \
+  # pandoc derives the epub's dc:language from the shell locale when the document
+  # sets none; a "C"/POSIX/unset locale (common in CI and containers) yields an
+  # invalid BCP 47 tag ("C") that epubcheck rejects (OPF-092). Substitute a valid
+  # fallback for that case only — a valid locale is kept, and an explicit `lang:`
+  # in the document always wins over the locale regardless.
+  local loc="${LC_ALL:-${LANG:-}}"
+  case "$loc" in ''|C|C.*|POSIX|POSIX.*) loc=en_US.UTF-8 ;; esac
+  LC_ALL="$loc" LANG="$loc" MDEXPORT_TMP="$TMP" pandoc "$IN" \
     --from=markdown+tex_math_dollars+tex_math_single_backslash+gfm_auto_identifiers \
     --to=epub3 \
     --lua-filter="$LUA" \

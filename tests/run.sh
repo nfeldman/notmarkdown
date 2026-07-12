@@ -236,7 +236,7 @@ else
 fi
 if command -v epubcheck >/dev/null 2>&1; then
   epubcheck "$WORK/ep.epub" >"$WORK/.log" 2>&1 && ok "--epub passes epubcheck" \
-                                               || bad "--epub epubcheck" "$(tail -3 "$WORK/.log")"
+                                               || bad "--epub epubcheck" "$(grep -iE 'ERROR|RSC-|OPF-|HTM-|MED-|PKG-' "$WORK/.log" | head -6)"
 else
   skp "--epub epubcheck" "epubcheck not installed"
 fi

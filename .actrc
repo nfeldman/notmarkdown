@@ -1,0 +1,6 @@
+# Run GitHub Actions locally with `act` (github.com/nektos/act).
+# Force the same architecture GitHub uses (our workflow pins amd64 binaries);
+# on Apple Silicon this runs under Rosetta/QEMU.
+--container-architecture linux/amd64
+# A fuller runner image than act's default micro one (has curl, sudo, python3, node…).
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
