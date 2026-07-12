@@ -216,6 +216,7 @@ does not use `typography.html`. That is intentional rather than a loss of fideli
 | `svg-scope` | Namespaces identifiers inside each embedded SVG so diagrams cannot collide in one HTML document. |
 | `mdlinks.lua` | Used by `--follow` to rewrite same-directory Markdown links and record linked files for export. |
 | `typography.html` | Self-contained HTML styling, including readable measure, print rules, dark-mode handling, and math-font fallbacks. |
+| `droplet.applescript`, `make-droplet` | Source and builder for an optional macOS drag-and-drop app (see below). |
 | `.claude/skills/publish` | Optional Claude Code skill that exposes publishing as an explicit action. |
 
 ## Usage
@@ -303,6 +304,22 @@ one step:
 mdexport notes/ --out /tmp/site      # every notes/*.md -> /tmp/site/*.html
 mdexport index.md --follow --out site/   # a linked set, published into site/
 ```
+
+## Drag-and-drop app (macOS)
+
+Because every input produces a sibling output, no configuration is needed to publish by
+dropping. `make-droplet` compiles a small AppleScript into an app you can drop Markdown
+files or folders onto:
+
+```bash
+./make-droplet                 # -> ~/Applications/notmarkdown.app
+```
+
+Drop a file to get a sibling file; drop a folder to get a sibling folder (or one combined
+ebook with `--epub`). The app is built from `droplet.applescript` with `osacompile`, so it
+is version-controlled and rebuildable rather than assembled by hand — edit the source and
+run `make-droplet` again. It calls the same `mdexport` on your `PATH`, so it stays in step
+with the CLI. (On first launch, right-click the app and choose *Open* to clear Gatekeeper.)
 
 ## Requirements
 

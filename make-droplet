@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# make-droplet — build a macOS drag-and-drop app around mdexport, from source.
+#
+# Compiles droplet.applescript into an .app with osacompile (built into macOS),
+# so the app is version-controlled and rebuildable rather than a hand-assembled
+# Automator blob. Drop Markdown files or folders on the result to publish them;
+# each output is written as a sibling of what you dropped.
+#
+# Usage:
+#   ./make-droplet                 # -> ~/Applications/notmarkdown.app
+#   ./make-droplet /path/to/My.app # -> a chosen location
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [[ -L "$SELF" ]]; do SELF="$(readlink "$SELF")"; done
+ASSETS="$(cd "$(dirname "$SELF")" && pwd)"
+SRC="$ASSETS/droplet.applescript"
+
+OUT="${1:-$HOME/Applications/notmarkdown.app}"
+
+command -v osacompile >/dev/null 2>&1 || { echo "make-droplet: osacompile not found (macOS only)" >&2; exit 1; }
+[[ -f "$SRC" ]] || { echo "make-droplet: missing $SRC" >&2; exit 1; }
+command -v mdexport >/dev/null 2>&1 || echo "make-droplet: note — 'mdexport' isn't on PATH yet; the app expects it in ~/.local/bin (see the README Install step)." >&2
+
+mkdir -p "$(dirname "$OUT")"
+rm -rf "$OUT"
+osacompile -o "$OUT" "$SRC"
+
+echo "built $OUT"
+echo "Drag Markdown files or folders onto it to publish. (First run: right-click → Open to clear Gatekeeper.)"

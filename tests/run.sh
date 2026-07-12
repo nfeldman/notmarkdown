@@ -302,6 +302,22 @@ mkdir -p "$WORK/din/empty"
 "$MDEXPORT" "$WORK/din/empty" >"$WORK/.log" 2>&1; DIR_RC=$?
 assert_rc_nonzero "$DIR_RC" "empty directory (no .md) errors"
 
+# make-droplet: build the macOS drag-and-drop app (macOS only — skips elsewhere).
+# We don't drive the GUI here; we verify it compiles to a valid .app whose on-open
+# handler invokes mdexport (the drop mechanism itself is standard AppleScript).
+if command -v osacompile >/dev/null 2>&1; then
+  DAPP="$WORK/nm.app"
+  "$REPO/make-droplet" "$DAPP" >"$WORK/.log" 2>&1; BUILD_RC=$?
+  assert_rc "$BUILD_RC" 0 "make-droplet builds the app"
+  assert_file "$DAPP/Contents/Resources/Scripts/main.scpt" "droplet is a valid .app (compiled script present)"
+  SCPT="$(osadecompile "$DAPP/Contents/Resources/Scripts/main.scpt" 2>/dev/null || true)"
+  { printf '%s' "$SCPT" | grep -q 'on open' && printf '%s' "$SCPT" | grep -q 'mdexport'; } \
+    && ok "droplet handles dropped items (on open) and invokes mdexport" \
+    || bad "droplet logic" "compiled script is missing the on-open/mdexport wiring"
+else
+  skp "make-droplet" "osacompile not available (macOS only)"
+fi
+
 # ===========================================================================
 # Per-renderer tests. Each renderer is probed first; a failing probe -> SKIP.
 # ===========================================================================
