@@ -18,6 +18,7 @@
 #   mdexport FILE.md --pdfa          # -> FILE.pdf as PDF/A-2b (archival)
 #   mdexport FILE.md --pdf-from-html # -> FILE.pdf by printing the HTML (needs a browser)
 #   mdexport FILE.md --epub          # -> FILE.epub (portable ebook, assets embedded)
+#   mdexport FILE.md --out DIR       # write outputs to DIR (created) instead of alongside
 #   mdexport FILE.md --html --open   # build HTML and open it
 #   mdexport FILE.md --strict        # abort the build if ANY diagram fails
 #   mdexport FILE.md --follow        # also build every same-dir .md it links to (HTML)
@@ -67,8 +68,10 @@ ok()   { printf '\033[1;32m ok\033[0m %s\n' "$1" >&2; }
 
 # --- parse args ------------------------------------------------------------
 IN=""; DO_HTML=0; DO_PDF=0; PDFA=0; OPEN=0; WATCH=0; STRICT=0; FOLLOW=0; PDF_HTML=0; DO_EPUB=0; BUNDLE=0
+OUT_DIR=""; EXPECT_OUT=0
 BUILD_ARGS=()   # args minus --watch, for the watcher to re-invoke a single build
 for a in "$@"; do
+  if [[ $EXPECT_OUT -eq 1 ]]; then OUT_DIR="$a"; EXPECT_OUT=0; BUILD_ARGS+=("$a"); continue; fi
   case "$a" in
     --html) DO_HTML=1; BUILD_ARGS+=("$a") ;;
     --pdf)  DO_PDF=1;  BUILD_ARGS+=("$a") ;;
@@ -76,6 +79,8 @@ for a in "$@"; do
     --pdf-from-html) PDF_HTML=1; BUILD_ARGS+=("$a") ;;
     --epub) DO_EPUB=1; BUILD_ARGS+=("$a") ;;
     --all)  DO_HTML=1; DO_PDF=1; BUILD_ARGS+=("$a") ;;
+    --out)   EXPECT_OUT=1; BUILD_ARGS+=("$a") ;;          # write outputs to DIR (next arg)
+    --out=*) OUT_DIR="${a#--out=}"; BUILD_ARGS+=("$a") ;;
     --open) OPEN=1; BUILD_ARGS+=("$a") ;;
     --strict) STRICT=1; BUILD_ARGS+=("$a") ;;
     --follow) FOLLOW=1; BUILD_ARGS+=("$a") ;;
@@ -85,11 +90,12 @@ for a in "$@"; do
     *) IN="$a"; BUILD_ARGS+=("$a") ;;
   esac
 done
+[[ $EXPECT_OUT -eq 1 ]] && die "--out needs a directory argument"
 # --strict: one failed diagram aborts the whole build (archival/CI all-or-nothing).
 # Default: mermaid.lua isolates a failed diagram to a visible placeholder and the
 # rest of the document still renders. The filter reads this via the environment.
 [[ $STRICT -eq 1 ]] && export MDEXPORT_STRICT=1
-[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--pdf-from-html|--epub|--strict|--follow|--bundle|--watch]"
+[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--pdf-from-html|--epub|--out DIR|--strict|--follow|--bundle|--watch]"
 [[ -f "$IN" ]] || die "not found: $IN"
 # Default output is HTML unless another output was explicitly asked for.
 [[ $DO_HTML -eq 0 && $DO_PDF -eq 0 && $PDF_HTML -eq 0 && $DO_EPUB -eq 0 ]] && DO_HTML=1
@@ -116,6 +122,12 @@ fi
 base="$(basename "${IN%.*}")"
 dir="$(dirname "$IN")"
 
+# --out DIR writes every output to DIR instead of next to the source. Create it
+# once, up front. outdir SRCDIR returns the effective output dir: OUT_DIR if set,
+# else the given source dir (so callers pass the dir the output would default to).
+if [[ -n "$OUT_DIR" ]]; then mkdir -p "$OUT_DIR" || die "cannot create --out directory: $OUT_DIR"; fi
+outdir() { if [[ -n "$OUT_DIR" ]]; then printf '%s' "$OUT_DIR"; else printf '%s' "$1"; fi; }
+
 # --- no-syntax-leak guarantee -----------------------------------------------
 # Diagrams are guaranteed for BOTH formats at the source: mermaid.lua aborts the
 # whole pandoc run (non-zero exit) ONLY under --strict; by default a failed
@@ -140,7 +152,7 @@ check_html_leak() {
 }
 
 build_html() {
-  local out="$dir/$base.html"
+  local out="$(outdir "$dir")/$base.html"
   info "HTML  $IN -> $out"
   MDEXPORT_TMP="$TMP" pandoc "$IN" \
     --from=markdown+tex_math_dollars+tex_math_single_backslash+gfm_auto_identifiers \
@@ -158,7 +170,7 @@ build_html() {
 }
 
 build_pdf() {
-  local out="$dir/$base.pdf"
+  local out="$(outdir "$dir")/$base.pdf"
   if [[ $PDFA -eq 1 ]]; then
     # Route through a .typ intermediate so we can request a PDF/A standard.
     info "PDF/A $IN -> $out"
@@ -209,14 +221,15 @@ find_chrome() {
 # High-fidelity PDF: print the already-built self-contained HTML with a browser,
 # so the PDF inherits typography.html exactly (code styling, measure, fonts, …).
 build_pdf_html() {
-  local html="$dir/$base.html" out="$dir/$base.pdf" chrome err
+  local od; od="$(outdir "$dir")"
+  local html="$od/$base.html" out="$od/$base.pdf" chrome err
   [[ -f "$html" ]] || die "internal: HTML for $IN was not built"
   chrome="$(find_chrome)" || die "--pdf-from-html needs a Chromium browser. Install Google \
 Chrome, or 'npm i -g @mermaid-js/mermaid-cli' (brings chrome-headless-shell), or point \
 MDEXPORT_CHROME at a browser binary."
   info "PDF   $html -> $out (via $(basename "$chrome"))"
   # Absolute file:// URL (spaces percent-encoded so the browser accepts it).
-  local abs; abs="$(cd "$dir" && pwd)/$base.html"
+  local abs; abs="$(cd "$od" && pwd)/$base.html"
   err="$TMP/chrome.err"
   if ! "$chrome" --headless --no-sandbox --no-pdf-header-footer \
         --print-to-pdf="$out" "file://${abs// /%20}" >/dev/null 2>"$err"; then
@@ -232,7 +245,7 @@ MDEXPORT_CHROME at a browser binary."
 # as images, math as MathML) built straight from the Markdown by pandoc. Reflowable
 # — deliberately NOT styled with typography.html, since e-readers own their layout.
 build_epub() {
-  local out="$dir/$base.epub"
+  local out="$(outdir "$dir")/$base.epub"
   info "EPUB  $IN -> $out"
   # pandoc derives the epub's dc:language from the shell locale when the document
   # sets none; a "C"/POSIX/unset locale (common in CI and containers) yields an
@@ -292,7 +305,7 @@ follow_build() {
     IN="$f"; dir="$(dirname "$f")"; base="$(basename "${f%.*}")"
     : > "$links"                                       # mdlinks.lua appends refs here
     build_html
-    built+=("$dir/$base.html")
+    built+=("$(outdir "$dir")/$base.html")
     while read -r ref; do
       # Belt-and-braces: the filter already rejects separators, but never enqueue a
       # ref that isn't a plain same-directory filename that actually exists.
@@ -302,12 +315,14 @@ follow_build() {
   done
   info "followed ${#built[@]} file(s)"
   # --bundle: zip EXACTLY the built set (by basename, flat) into <entry>.zip — the
-  # bundle scope is the follow scope, not "every .html in the directory".
+  # bundle scope is the follow scope, not "every .html in the directory". The docs
+  # were written to the effective output dir (--out or the entry's dir); zip from there.
+  local odir; odir="$(outdir "$entry_dir")"
   if [[ $BUNDLE -eq 1 && ${#built[@]} -gt 0 ]]; then
-    local zip="$entry_dir/$entry_base.zip" names=() h
+    local zip="$odir/$entry_base.zip" names=() h
     for h in "${built[@]}"; do names+=("$(basename "$h")"); done
     rm -f "$zip"
-    ( cd "$entry_dir" && python3 -m zipfile -c "$zip" "${names[@]}" ) \
+    ( cd "$odir" && python3 -m zipfile -c "$zip" "${names[@]}" ) \
       || die "failed to create bundle: $zip"
     ok "$(basename "$zip") ($(wc -c <"$zip" | tr -d ' ') bytes, ${#names[@]} docs)"
   fi

@@ -104,12 +104,18 @@ mdexport notes.md --all        # both
 mdexport notes.md --pdfa       # -> notes.pdf as PDF/A-2b (archival, fonts embedded)
 mdexport notes.md --pdf-from-html  # -> notes.pdf by printing the HTML (browser, high fidelity)
 mdexport notes.md --epub       # -> notes.epub (portable ebook, diagrams + math embedded)
+mdexport notes.md --out site/  # write outputs into site/ (created) instead of alongside
 mdexport notes.md --open       # build HTML and open it
 mdexport notes.md --strict     # abort the build if any diagram fails (default: placeholder)
 mdexport notes.md --follow     # also export every same-dir .md it links to (HTML, links rewritten)
 mdexport notes.md --bundle     # --follow, then zip the set into notes.zip
 mdexport notes.md --watch      # rebuild on every save (uses watchexec if present)
 ```
+
+`--out DIR` sends every output to `DIR` (created if missing) instead of writing it next
+to the source — the output is *relocated*, not duplicated. It composes: `mdexport
+index.md --follow --out site/` publishes a whole interlinked set into a sibling
+directory, cross-links rewritten and the source folder left untouched.
 
 `--follow` exports a whole set of interlinked notes at once: it builds the input and
 every same-directory `.md` it links to (transitively, cycles handled), HTML only, and

@@ -241,6 +241,31 @@ else
   skp "--epub epubcheck" "epubcheck not installed"
 fi
 
+# --out DIR: write outputs to DIR (created) instead of next to the source. The
+# defining behavior: output is RELOCATED, not duplicated — nothing lands beside the
+# source — and DIR is created if missing. Composes with --follow/--bundle so a whole
+# interlinked set publishes into a sibling directory with links intact.
+mkdir -p "$WORK/outsrc"
+printf '# A\n\nlink [b](b.md), math $x^2$.\n' > "$WORK/outsrc/a.md"
+printf '# B\nback to [a](a.md).\n' > "$WORK/outsrc/b.md"
+build outsrc/a.md --out "$WORK/site"
+assert_rc "$BUILD_RC" 0 "--out builds"
+assert_file "$WORK/site/a.html" "--out writes HTML into the (auto-created) target dir"
+[ -f "$WORK/outsrc/a.html" ] && bad "--out relocates output" "a.html was also written next to the source" \
+                             || ok "--out relocates output (nothing written beside the source)"
+build outsrc/a.md --epub "--out=$WORK/ep"
+assert_file "$WORK/ep/a.epub" "--out=DIR form writes the .epub into the target dir"
+build outsrc/a.md --follow --out "$WORK/pub"
+assert_file "$WORK/pub/a.html" "--follow --out: entry doc published to target dir"
+assert_file "$WORK/pub/b.html" "--follow --out: linked doc published to target dir"
+assert_grep "$WORK/pub/a.html" 'href="b.html"' "--follow --out: cross-links rewritten (resolve in the target dir)"
+ls "$WORK/outsrc"/*.html >/dev/null 2>&1 && bad "--follow --out keeps source clean" "HTML written next to the sources" \
+                                         || ok "--follow --out leaves the source directory clean"
+build outsrc/a.md --bundle --out "$WORK/bun"
+assert_file "$WORK/bun/a.zip" "--bundle --out: zip written to the target dir"
+"$MDEXPORT" "$WORK/outsrc/a.md" --out >"$WORK/.log" 2>&1; OUT_RC=$?
+assert_rc_nonzero "$OUT_RC" "--out with no directory argument errors"
+
 # ===========================================================================
 # Per-renderer tests. Each renderer is probed first; a failing probe -> SKIP.
 # ===========================================================================
