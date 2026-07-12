@@ -1,199 +1,461 @@
-# notmarkdown — Markdown → durable docs, with Mermaid + LaTeX baked in
+# notmarkdown — Markdown → durable documents, with Mermaid and math included
 
-LLMs emit Markdown full of Mermaid diagrams and `$…$` LaTeX. Zed's preview renders
-Mermaid but **not** math; Claude Code's terminal renders neither. This toolkit
-closes the gap two ways, favoring **few, open, durable tools** over a big stack.
+`notmarkdown` publishes Markdown containing Mermaid diagrams and LaTeX-style math
+as self-contained HTML, PDF, PDF/A, or EPUB.
+
+It uses a small set of open tools, with defaults chosen for durability and explicit
+opt-ins for cases where fidelity or coverage matters more.
 
 ## What you get
 
-| Need | Answer |
-|------|--------|
-| **View** diagrams while editing | Zed's built-in Markdown preview already renders Mermaid natively (2026). Keep using it. |
-| **View** math + diagrams together | `mdexport FILE.md --open` → a self-contained HTML page. |
-| **Durable export** (everything baked in) | `mdexport` → self-contained HTML *and/or* PDF / PDF-A. |
+| Need | Use |
+|---|---|
+| Preview Mermaid while editing | Zed’s built-in Markdown preview |
+| View math and diagrams together | `mdexport FILE.md --open` |
+| Create self-contained HTML | `mdexport FILE.md` |
+| Create PDF or PDF/A | `mdexport FILE.md --pdf` or `--pdfa` |
+| Match the HTML closely in PDF | `mdexport FILE.md --pdf-from-html` |
+| Publish linked Markdown files together | `mdexport FILE.md --follow` or `--bundle` |
+| Create a portable ebook | `mdexport FILE.md --epub` |
 
-The export guarantees **no raw diagram leaks** in either format: a diagram that
-fails to render becomes a visible, labelled placeholder (the original source in an
-error box), never a raw ` ```mermaid ` fence — so one bad block no longer destroys the
-whole document. Pass `--strict` to restore all-or-nothing (any failure aborts the
-build). Equations become MathML (HTML) or typeset math (PDF); LaTeX that pandoc itself
-can't parse is passed through with a pandoc **warning on stderr** — that's a source
-error to fix, so watch the build output.
+The source remains ordinary Markdown. Publishing is a separate, explicit step.
 
-## The pipeline (why these tools)
+## Predictable failure behavior
 
-```
-                            default: mermaidx (browser-free) ─▶ inline SVG (both formats)
-Markdown ─▶ pandoc ─▶ mermaid.lua ─┤
-                            opt-in:  mmdc (headless Chrome) ─┬─ HTML ─▶ inline SVG
-                                                             └─ PDF  ─▶ hi-DPI PNG
-   ├─ HTML5 + MathML + inline SVG        ── self-contained .html (no JS)
-   └─ Typst ─▶ PDF / PDF-A               ── archival, fonts embedded
-```
+A failed diagram should not corrupt an otherwise useful document.
 
-- **pandoc** — the durable universal converter; Markdown stays your source of truth.
-  Its typed AST is the segment-and-reassemble engine: `mermaid.lua` collects and
-  batches only the diagram blocks; everything else flows straight to the two writers.
-- **Typst** — lean single-binary PDF engine (no multi-GB TeX). Renders LaTeX-style
-  math, bundles good math fonts, and emits archival **PDF/A**. ~30× faster than XeLaTeX.
-- **MathML** for HTML math — a W3C standard that renders natively in every 2026
-  browser with **no JavaScript** and no network. 100× smaller than a KaTeX/MathJax
-  bundle and won't rot when a pinned JS lib does. `typography.html` names STIX Two Math
-  (present on macOS) so Chromium — which ships no math font — renders it too.
-- **mermaidx** (browser-free) is the **default** diagram renderer — it runs the real
-  Mermaid v11 JS in an embedded engine with **no headless Chrome**, the single biggest
-  long-term-fragility source here. It is SVG-only and covers ~5 diagram types
-  (flowchart, sequence, ER, gitGraph, timeline); any other type falls back to a visible
-  placeholder instead of aborting the build. Inline SVGs are id-namespaced (`svg-scope`)
-  so multiple diagrams never collide in one document.
+By default, each Mermaid block is rendered independently. If one cannot be rendered,
+the output contains a visible, labelled placeholder with the original Mermaid source.
+It never exposes a raw ```` ```mermaid ```` fence in the finished document.
 
-## Two of everything
-
-Every choice here is a tradeoff, and the interesting ones have no right answer — only a
-defensible one for a given set of constraints. So where a choice was genuinely contested,
-there are two paths: a **default that leans boring and durable**, and an **opt-in that
-spends durability on fidelity or coverage**. Choose per document; nothing is load-bearing
-across the whole system, so you're free to disagree with a default one file at a time.
-
-**Diagram renderer — small and browser-free, or complete and heavy.** The default,
-`mermaidx`, runs Mermaid in an embedded JS engine: no headless Chrome (the single biggest
-long-term-fragility source in this space), at the price of ~5 diagram types and the
-occasional rough render. `MDEXPORT_MERMAID=mmdc` opts into the official mermaid-cli — every
-diagram type, exactly as the web draws them — and with it a ~170 MB Chromium that is the
-classic thing to break on an OS bump. Newer/smaller/80%-there versus
-battle-tested/monolithic/complete. Neither is wrong.
+Use `--strict` when partial output is not acceptable:
 
 ```bash
-MDEXPORT_MERMAID=mmdc mdexport FILE.md --all   # opt into full-fidelity diagrams
+mdexport FILE.md --strict
 ```
 
-**PDF — a lean single binary, or a mirror of the HTML.** `--pdf` goes Markdown → Typst:
-one small binary (no multi-GB TeX), fast, and able to emit archival **PDF/A** — but it
-styles the page its own way, so the PDF is a close cousin of the HTML, not a twin.
-`--pdf-from-html` prints the built HTML with a browser instead, so the PDF inherits the
-HTML's typography exactly — at the cost of depending on that browser. Archival and
-self-contained versus identical to what you see.
+In strict mode, any diagram failure aborts the build.
 
-**And which format outlives which?** The HTML is the copy I'd bet on: self-contained, no
-JavaScript, no network, system fonts — the plain text of twenty years ago, still rendering
-the same everywhere. PDF has the longer lineage and the better odds of being readable and
-printable in fifty years, precisely because the world is drowning in it. Keep the HTML to
-read; keep the PDF to archive; keep both — they're cheap.
+Equations are written as MathML in HTML and typeset for PDF. If Pandoc cannot parse a
+piece of LaTeX, it reports a warning on standard error. That is treated as a source
+problem to review rather than silently hidden.
 
-The defaults encode one bias — *take something modern and produce something boring and
-durable, without much fuss* — and the opt-ins are there for the times that bias costs you
-something you actually need.
+## How it works
+
+```text
+Markdown
+    │
+    ▼
+  pandoc ── mermaid.lua
+    │
+    ├── Mermaid ── mermaidx ── inline SVG
+    │             or
+    │             mmdc ─────── inline SVG / high-resolution PNG
+    │
+    ├── HTML5 + MathML + inline SVG
+    │       └── self-contained HTML, with no JavaScript or network dependency
+    │
+    └── Typst
+            └── PDF or PDF/A, with fonts embedded
+
+Alternative PDF path:
+
+self-contained HTML ── Chromium-family browser ── PDF
+```
+
+The main components are deliberately conventional:
+
+- **Pandoc** parses the document into a typed syntax tree and writes the output
+  formats. The Mermaid filter handles diagram blocks; the rest of the document
+  continues through Pandoc normally.
+- **Typst** provides the default PDF path without requiring a full TeX installation.
+  It is used for both ordinary PDF and archival PDF/A output.
+- **MathML** keeps HTML equations self-contained and avoids shipping a JavaScript
+  math renderer with every document.
+- **Mermaid SVG** is embedded directly into HTML. Each diagram’s identifiers are
+  namespaced so multiple SVGs cannot interfere with one another.
+- **Mermaidx** provides the default browser-free diagram path.
+- **Mermaid CLI (`mmdc`)** provides the broader-coverage path when carrying a browser
+  dependency is justified.
+
+## Two deliberate approaches
+
+Some engineering choices do not have one correct answer. They have different correct
+answers for different constraints.
+
+`notmarkdown` therefore provides a conservative default and an explicit alternative
+where the tradeoff is meaningful.
+
+### Diagram rendering: small dependency or broad coverage
+
+The default renderer is `mermaidx`. It runs Mermaid without launching a headless
+browser and produces SVG directly.
+
+Its current coverage includes the common diagram families used by this project, such
+as flowcharts, sequence diagrams, entity-relationship diagrams, git graphs, and
+timelines. Unsupported diagrams become labelled placeholders unless `--strict` is
+enabled.
+
+For Mermaid’s full renderer and wider diagram coverage, use `mmdc`:
+
+```bash
+MDEXPORT_MERMAID=mmdc mdexport FILE.md --all
+```
+
+That path uses the official Mermaid CLI and its Chromium runtime.
+
+The tradeoff is direct:
+
+| Renderer | Strength | Cost |
+|---|---|---|
+| `mermaidx` | Small, browser-free, fewer moving parts | More limited diagram coverage |
+| `mmdc` | Broad coverage and web-renderer fidelity | Chromium dependency and a larger installation |
+
+Neither is a degraded version of the other. They serve different priorities.
+
+### PDF rendering: archival independence or visual equivalence
+
+The default PDF path sends the document through Typst:
+
+```bash
+mdexport FILE.md --pdf
+```
+
+This produces a self-contained PDF using a dedicated document engine. It can also
+produce PDF/A:
+
+```bash
+mdexport FILE.md --pdfa
+```
+
+The resulting PDF follows the same overall design as the HTML, but it is not intended
+to be a pixel-identical copy. HTML and paged documents have different layout models.
+
+For a PDF that closely follows the HTML presentation, print the completed HTML through
+a browser:
+
+```bash
+mdexport FILE.md --pdf-from-html
+```
+
+That preserves the HTML typography and layout more directly, at the cost of making a
+Chromium-family browser part of the publishing path.
+
+| PDF path | Strength | Cost |
+|---|---|---|
+| Typst | Dedicated PDF engine, small toolchain, PDF/A support | Layout is related to the HTML rather than identical |
+| Browser print | Closely matches the HTML presentation | Browser dependency |
+
+### Why provide both?
+
+AI-assisted development lowered the cost of implementing and refining alternatives.
+That saved effort can be used in three ways:
+
+- build a prototype and discard it—the Fred Brooks “plan to throw one away” case;
+- spend the same time making one implementation substantially stronger;
+- when the needs are distinct and the maintenance cost remains reasonable, build both.
+
+This project takes the third approach. The model accelerated implementation and routine
+checking; the constraints, defaults, tradeoffs, and acceptance criteria remained human
+decisions.
+
+The same principle applies beyond a small publishing tool: faster implementation can
+mean more output, but it can also mean better judgment applied to more of the design
+space.
+
+## Output formats
+
+### Self-contained HTML
+
+The default output is one `.html` file containing its styles, MathML, and diagrams.
+
+```bash
+mdexport notes.md
+```
+
+It requires no JavaScript, network connection, or adjacent asset directory.
+
+```bash
+mdexport notes.md --open
+```
+
+builds the HTML and opens it in the default browser.
+
+### PDF and PDF/A
+
+```bash
+mdexport notes.md --pdf
+mdexport notes.md --pdfa
+mdexport notes.md --pdf-from-html
+```
+
+Use the Typst path for a dedicated, self-contained PDF pipeline. Use the browser path
+when matching the HTML presentation is more important.
+
+Keeping both HTML and PDF is inexpensive: HTML is convenient for reading and linking;
+PDF remains useful for exchange, printing, and archival workflows.
+
+### EPUB
+
+```bash
+mdexport notes.md --epub
+```
+
+EPUB packages one document as reflowable XHTML with its diagrams and math embedded.
+
+Because an ebook reader controls page size, type size, margins, and pagination, EPUB
+does not use `typography.html`. That is intentional rather than a loss of fidelity.
 
 ## Files
 
 | File | Role |
-|------|------|
-| `mdexport` | The CLI. Orchestrates pandoc → HTML/PDF, runs the no-leak check. `--strict` for all-or-nothing. |
-| `mermaid.lua` | Pandoc filter: collects, de-duplicates and batches every ` ```mermaid ` block, renders it per output format (inline SVG for HTML, hi-DPI PNG for the mmdc PDF path), and isolates a failed diagram to a visible placeholder. |
-| `mermaid-render` | The default browser-free Mermaid→SVG renderer (mermaidx + z-order/viewBox fixups). |
-| `svg-scope` | Namespaces every id in an inline SVG (per diagram occurrence) so multiple diagrams don't collide in one HTML document. |
-| `mdlinks.lua` | `--follow` only: an AST filter that rewrites same-dir `X.md` links to `X.html` and records them to follow (a no-op on ordinary builds). |
-| `typography.html` | Self-contained CSS: book-serif body, good measure/rhythm, math font, dark-mode aware. No web fonts. |
+|---|---|
+| `mdexport` | Main CLI. Coordinates conversion, output formats, validation, linked-document export, and watching. |
+| `mermaid.lua` | Pandoc filter that finds, deduplicates, batches, and renders Mermaid blocks. It also isolates failures as placeholders. |
+| `mermaid-render` | Default Mermaid-to-SVG adapter using `mermaidx`, with SVG view-box and ordering corrections. |
+| `svg-scope` | Namespaces identifiers inside each embedded SVG so diagrams cannot collide in one HTML document. |
+| `mdlinks.lua` | Used by `--follow` to rewrite same-directory Markdown links and record linked files for export. |
+| `typography.html` | Self-contained HTML styling, including readable measure, print rules, dark-mode handling, and math-font fallbacks. |
+| `.claude/skills/publish` | Optional Claude Code skill that exposes publishing as an explicit action. |
 
 ## Usage
 
 ```bash
-mdexport notes.md              # -> notes.html (self-contained)
-mdexport notes.md --pdf        # -> notes.pdf  (via Typst)
-mdexport notes.md --all        # both
-mdexport notes.md --pdfa       # -> notes.pdf as PDF/A-2b (archival, fonts embedded)
-mdexport notes.md --pdf-from-html  # -> notes.pdf by printing the HTML (browser, high fidelity)
-mdexport notes.md --epub       # -> notes.epub (portable ebook, diagrams + math embedded)
-mdexport notes.md --out site/  # write outputs into site/ (created) instead of alongside
-mdexport notes.md --open       # build HTML and open it
-mdexport notes.md --strict     # abort the build if any diagram fails (default: placeholder)
-mdexport notes.md --follow     # also export every same-dir .md it links to (HTML, links rewritten)
-mdexport notes.md --bundle     # --follow, then zip the set into notes.zip
-mdexport notes.md --watch      # rebuild on every save (uses watchexec if present)
+mdexport notes.md                  # notes.html
+mdexport notes.md --pdf            # notes.pdf through Typst
+mdexport notes.md --all            # HTML and PDF
+mdexport notes.md --pdfa           # archival PDF/A
+mdexport notes.md --pdf-from-html  # PDF printed from the completed HTML
+mdexport notes.md --epub           # notes.epub
+mdexport notes.md --out site/      # write outputs into site/ instead of alongside
+mdexport notes.md --open           # build HTML and open it
+mdexport notes.md --strict         # fail if any diagram cannot be rendered
+mdexport notes.md --follow         # export linked same-directory Markdown files
+mdexport notes.md --bundle         # export the linked set and create a ZIP
+mdexport notes.md --watch          # rebuild after each save
+
+mdexport notes/                    # every notes/*.md  ->  sibling notes-html/
+mdexport notes/ --epub             # every notes/*.md  ->  one combined notes.epub
 ```
 
-`--out DIR` sends every output to `DIR` (created if missing) instead of writing it next
-to the source — the output is *relocated*, not duplicated. It composes: `mdexport
-index.md --follow --out site/` publishes a whole interlinked set into a sibling
-directory, cross-links rewritten and the source folder left untouched.
+## Publishing a linked set
 
-`--follow` exports a whole set of interlinked notes at once: it builds the input and
-every same-directory `.md` it links to (transitively, cycles handled), HTML only, and
-rewrites each `[x](other.md)` cross-link to `other.html` so the exported set stays
-navigable. Links to other directories and to URLs are left untouched.
+`--follow` exports the input document and every same-directory Markdown file reachable
+from it through Markdown links.
 
-**Bundling a set into one file.** `--bundle` runs `--follow`, then zips exactly that
-set (the reachable docs — not stray `.html` already in the directory) into `notes.zip`:
-the most portable multi-document container there is — unzip anywhere, open the entry
-page in any browser, and the rewritten links resolve offline. `--epub` instead packs a
-single document into an EPUB — a valid, battle-tested ZIP of XHTML with diagrams and
-math (MathML) embedded — for e-readers; it's reflowable, so it deliberately drops
-`typography.html` and lets the reader own the layout.
+```bash
+mdexport index.md --follow
+```
 
-`--pdf-from-html` needs a Chromium-family browser (Chrome/Chromium/Edge/Brave, or the
-`chrome-headless-shell` that `mmdc` installs); set `MDEXPORT_CHROME` if it isn't
-auto-found. See [Two of everything](#two-of-everything) for when to prefer it over `--pdf`.
+For the exported HTML set:
+
+- `[x](other.md)` becomes `[x](other.html)`;
+- traversal is transitive;
+- cycles are handled;
+- links to URLs and files in other directories are left unchanged;
+- only reachable files are exported.
+
+This allows a directory of interlinked Markdown notes to remain navigable after export.
+
+### Bundling the set
+
+```bash
+mdexport index.md --bundle
+```
+
+`--bundle` performs the linked export and then creates `index.zip`.
+
+The archive contains exactly the reachable exported set, rather than every existing
+HTML file in the directory. It can be unpacked anywhere and opened locally; rewritten
+links continue to work without a network connection.
+
+Use `--bundle` for a collection of linked documents. Use `--epub` for one reflowable
+document.
+
+## Processing a directory
+
+An input may be a directory instead of a single file. Every top-level `.md` in it is
+processed (not only the files reachable through links), and the output is written as a
+**sibling of the input directory**:
+
+```bash
+mdexport notes/          # -> notes-html/  (a sibling directory of HTML)
+mdexport notes/ --pdf    # -> notes-pdf/   (a sibling directory of PDFs)
+mdexport notes/ --epub   # -> notes.epub   (one combined ebook, beside the directory)
+mdexport notes/ --bundle # -> notes.zip    (the HTML set as one archive, beside it)
+```
+
+The shape follows the format. Formats that are inherently one-file-per-document (HTML,
+PDF) produce a sibling *directory*; formats that are a single artifact (EPUB, a bundle
+ZIP) produce a sibling *file*, sharing the input directory's parent. For the HTML
+directory, same-directory `[x](other.md)` links are rewritten to `other.html`, so the
+exported folder is navigable, and the source directory is left untouched. Recursion is
+intentionally not performed — only the directory's own top-level files.
+
+## Output location
+
+By default each output is written next to its source. `--out DIR` redirects every
+output into `DIR` (created if missing) instead; the output is relocated, not duplicated.
+It composes with the above, so a directory of linked notes can be published elsewhere in
+one step:
+
+```bash
+mdexport notes/ --out /tmp/site      # every notes/*.md -> /tmp/site/*.html
+mdexport index.md --follow --out site/   # a linked set, published into site/
+```
 
 ## Requirements
 
-- **pandoc** and **typst** — `brew install pandoc typst`
-- **mermaidx** (default diagram renderer, browser-free) — `uv tool install mermaidx`
-  (or `pipx install mermaidx`)
-- **python3** — drives `mermaid-render`'s SVG fixups and `svg-scope`'s id-namespacing
-- **mmdc** (optional — full-fidelity `MDEXPORT_MERMAID=mmdc` path) —
-  `npm i -g @mermaid-js/mermaid-cli`; first run fetches `chrome-headless-shell` (~170 MB)
-- macOS-oriented: `--open` uses `open`, and the `--watch` fallback uses BSD `stat -f %m`.
-  On Linux, swap those two lines (`xdg-open`, `stat -c %Y`).
+### Required
 
-## Install
+- **Pandoc**
+- **Typst**
+- **Python 3**
+- **Mermaidx**
 
-One step:
-
-```bash
-git clone <this-repo> notmarkdown && cd notmarkdown
-./setup.sh
-```
-
-`setup.sh` is idempotent (safe to re-run). It installs `pandoc` + `typst` via
-Homebrew and `mermaidx` via uv/pipx if missing, then symlinks `mdexport` into
-`~/.local/bin` (backing up anything already there) and checks it's on your PATH.
-Then: `mdexport notes.md`.
-
-**Or do it by hand:**
+On macOS:
 
 ```bash
 brew install pandoc typst
-uv tool install mermaidx            # default diagram renderer (or: pipx install mermaidx)
-npm i -g @mermaid-js/mermaid-cli    # optional: MDEXPORT_MERMAID=mmdc full-fidelity path
-mkdir -p ~/.local/bin
-ln -s "$PWD/mdexport" ~/.local/bin/mdexport   # mdexport resolves this back to the repo for its assets
+uv tool install mermaidx
 ```
 
-**Uninstall (the exit is one symlink):**
+`pipx` may be used instead of `uv`:
+
+```bash
+pipx install mermaidx
+```
+
+### Optional
+
+For the full-coverage Mermaid path:
+
+```bash
+npm install -g @mermaid-js/mermaid-cli
+```
+
+For `--pdf-from-html`, install a Chromium-family browser such as Chrome, Chromium,
+Edge, Brave, or the headless Chromium runtime provided with Mermaid CLI.
+
+Set an explicit browser path when automatic discovery is not sufficient:
+
+```bash
+MDEXPORT_CHROME=/path/to/chrome mdexport notes.md --pdf-from-html
+```
+
+### Platform notes
+
+The supplied scripts are currently oriented toward macOS:
+
+- `--open` uses `open`;
+- the built-in watch fallback uses BSD `stat -f %m`.
+
+On Linux, the equivalent commands are generally:
+
+- `xdg-open`;
+- `stat -c %Y`.
+
+`--watch` uses `watchexec` when it is available.
+
+## Install
+
+Clone the repository and run the setup script:
+
+```bash
+git clone <this-repo> notmarkdown
+cd notmarkdown
+./setup.sh
+```
+
+`setup.sh` is idempotent and safe to run again.
+
+It:
+
+1. installs Pandoc and Typst through Homebrew when missing;
+2. installs `mermaidx` through `uv` or `pipx`;
+3. creates a symlink to `mdexport` in `~/.local/bin`;
+4. backs up an existing file at that path rather than overwriting it;
+5. checks whether `~/.local/bin` is on `PATH`.
+
+After installation:
+
+```bash
+mdexport notes.md
+```
+
+### Manual installation
+
+```bash
+brew install pandoc typst
+uv tool install mermaidx
+
+# Optional full-coverage Mermaid renderer
+npm install -g @mermaid-js/mermaid-cli
+
+mkdir -p ~/.local/bin
+ln -s "$PWD/mdexport" ~/.local/bin/mdexport
+```
+
+`mdexport` resolves its symlink back to the repository so it can locate the filters,
+styles, and helper scripts stored with it.
+
+## Uninstall
+
+Remove the CLI symlink:
 
 ```bash
 rm ~/.local/bin/mdexport
-uv tool uninstall mermaidx          # or: pipx uninstall mermaidx
+```
+
+Remove installed dependencies when they are no longer used elsewhere:
+
+```bash
+uv tool uninstall mermaidx
+# or:
+pipx uninstall mermaidx
+
 brew uninstall pandoc typst
 ```
 
-## Using it from an AI
+If Mermaid CLI was installed only for this project:
 
-Markdown is the churn; this tool is the *publish* step. The judgment of **when** to
-reach for it — an explicit action, plus something an assistant offers when it has just
-generated a document worth keeping — lives in a **Claude Code skill** at
-[`.claude/skills/publish`](.claude/skills/publish/SKILL.md). It shells out to `mdexport`
-and encodes one rule above all: **never auto-publish a draft; publish only when asked,
-and otherwise just offer.** Make it available everywhere by symlinking it alongside the
-CLI:
+```bash
+npm uninstall -g @mermaid-js/mermaid-cli
+```
+
+## Using it from an AI assistant
+
+Markdown is the working format. `mdexport` is the publishing step.
+
+The included Claude Code skill is located at:
+
+```text
+.claude/skills/publish/SKILL.md
+```
+
+It follows one primary rule:
+
+> Never publish a draft automatically. Publish when asked; otherwise, offer.
+
+Install the skill globally by symlinking it:
 
 ```bash
 mkdir -p ~/.claude/skills
 ln -s "$PWD/.claude/skills/publish" ~/.claude/skills/publish
 ```
 
-An **MCP server** isn't required for shell-capable agents (Claude Code, etc. — the skill
-+ CLI is the whole story). It's worth adding only to reach clients that *can't* run a
-shell (e.g. Claude Desktop): it would wrap `mdexport` as one `publish_markdown` tool
-(input: Markdown text or a path + a format; output: the artifact), carrying the same
-"explicit action / offer-don't-auto-run" guidance in its tool description.
+For shell-capable agents such as Claude Code, the skill and CLI are sufficient. An MCP
+server would add little beyond wrapping the same command.
+
+An MCP wrapper may still be useful for clients that cannot execute shell commands. Its
+interface can remain small:
+
+```text
+publish_markdown
+    input: Markdown text or a file path
+    format: html, pdf, pdfa, epub, or all
+    output: the completed artifact
+```
+
+Its tool description should preserve the same publication rule: publishing is an
+explicit action, not an automatic consequence of generating Markdown.

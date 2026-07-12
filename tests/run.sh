@@ -266,6 +266,42 @@ assert_file "$WORK/bun/a.zip" "--bundle --out: zip written to the target dir"
 "$MDEXPORT" "$WORK/outsrc/a.md" --out >"$WORK/.log" 2>&1; OUT_RC=$?
 assert_rc_nonzero "$OUT_RC" "--out with no directory argument errors"
 
+# Directory input: process every top-level .md; the output is a SIBLING of the input
+# directory. Defining limits: ALL .md are built (including ones nothing links to — not
+# just a --follow set), the sibling lands in the PARENT (not nested inside the input),
+# the source dir stays clean, and EPUB collapses the folder into ONE combined ebook file.
+mkdir -p "$WORK/din/notes"
+printf '# A\n\nsee [b](b.md)\n' > "$WORK/din/notes/a.md"
+printf '# B\n\nback to [a](a.md)\n' > "$WORK/din/notes/b.md"
+printf '# C\n\nnothing links here\n' > "$WORK/din/notes/c.md"   # unlinked island
+"$MDEXPORT" "$WORK/din/notes" >"$WORK/.log" 2>&1; BUILD_RC=$?
+assert_rc "$BUILD_RC" 0 "directory input builds"
+assert_file "$WORK/din/notes-html/a.html" "dir -> sibling <dir>-html/ in the parent"
+[ -e "$WORK/din/notes/notes-html" ] && bad "sibling is not nested" "output nested inside the input dir" \
+                                    || ok "sibling directory sits beside the input, not inside it"
+N_HTML=$(ls "$WORK/din/notes-html"/*.html 2>/dev/null | wc -l | tr -d ' ')
+[ "$N_HTML" -eq 3 ] && ok "dir input builds ALL top-level .md (incl. the unlinked island)" \
+                    || bad "dir input completeness" "built $N_HTML html, expected 3"
+assert_grep "$WORK/din/notes-html/a.html" 'href="b.html"' "dir HTML: cross-links rewritten"
+ls "$WORK/din/notes"/*.html >/dev/null 2>&1 && bad "dir input keeps source clean" "html written into the source dir" \
+                                            || ok "dir input leaves the source directory clean"
+"$MDEXPORT" "$WORK/din/notes" --epub >"$WORK/.log" 2>&1
+assert_file "$WORK/din/notes.epub" "dir --epub -> one combined <dir>.epub beside the input dir"
+if python3 - "$WORK/din/notes.epub" 2>"$WORK/.perr" <<'PY'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1]); n = z.namelist()
+assert n[0] == "mimetype", "not a valid epub"
+x = b"".join(z.read(m) for m in n if m.endswith((".xhtml", ".html")))
+assert b"nothing links here" in x, "combined epub is missing the unlinked file's content"
+PY
+then ok "dir --epub combines every file into one ebook (unlinked island included)"
+else bad "dir --epub combined content" "$(cat "$WORK/.perr" 2>/dev/null | tail -1)"; fi
+"$MDEXPORT" "$WORK/din/notes" --out "$WORK/dsite" >"$WORK/.log" 2>&1
+assert_file "$WORK/dsite/a.html" "dir --out DIR: outputs land in DIR"
+mkdir -p "$WORK/din/empty"
+"$MDEXPORT" "$WORK/din/empty" >"$WORK/.log" 2>&1; DIR_RC=$?
+assert_rc_nonzero "$DIR_RC" "empty directory (no .md) errors"
+
 # ===========================================================================
 # Per-renderer tests. Each renderer is probed first; a failing probe -> SKIP.
 # ===========================================================================

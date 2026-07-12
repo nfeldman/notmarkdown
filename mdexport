@@ -95,8 +95,8 @@ done
 # Default: mermaid.lua isolates a failed diagram to a visible placeholder and the
 # rest of the document still renders. The filter reads this via the environment.
 [[ $STRICT -eq 1 ]] && export MDEXPORT_STRICT=1
-[[ -n "$IN" ]] || die "no input file. Try: mdexport FILE.md [--pdf|--all|--pdfa|--pdf-from-html|--epub|--out DIR|--strict|--follow|--bundle|--watch]"
-[[ -f "$IN" ]] || die "not found: $IN"
+[[ -n "$IN" ]] || die "no input. Try: mdexport FILE.md|DIR [--pdf|--all|--pdfa|--pdf-from-html|--epub|--out DIR|--strict|--follow|--bundle|--watch]"
+[[ -f "$IN" || -d "$IN" ]] || die "not found: $IN"
 # Default output is HTML unless another output was explicitly asked for.
 [[ $DO_HTML -eq 0 && $DO_PDF -eq 0 && $PDF_HTML -eq 0 && $DO_EPUB -eq 0 ]] && DO_HTML=1
 # --follow (and --bundle) export a whole set of interlinked same-directory docs;
@@ -330,7 +330,65 @@ follow_build() {
   return 0
 }
 
-if [[ $FOLLOW -eq 1 ]]; then
+# --- directory input: process every top-level *.md, output as a SIBLING --------
+# The output is always a sibling of the input directory: HTML/PDF go into a sibling
+# DIRECTORY (one file per .md, HTML cross-links rewritten); EPUB becomes one combined
+# ebook FILE beside the input dir; --bundle a single .zip beside it. --out overrides
+# where the sibling lands.
+dir_build() {
+  TMP="$(mktemp -d)"
+  trap '[[ -n "${TMP:-}" ]] && rm -rf "$TMP"' RETURN EXIT
+  local d dbase dparent user_out
+  d="${IN%/}"; dbase="$(basename "$d")"; dparent="$(dirname "$d")"; user_out="$OUT_DIR"
+  local -a mds=(); local f
+  for f in "$d"/*.md; do [[ -f "$f" ]] && mds+=("$f"); done
+  [[ ${#mds[@]} -gt 0 ]] || die "no .md files in directory: $d"
+
+  # EPUB: one combined ebook, a sibling FILE of the input directory.
+  if [[ $DO_EPUB -eq 1 ]]; then
+    [[ -n "$user_out" ]] && mkdir -p "$user_out"
+    local out="${user_out:-$dparent}/$dbase.epub"
+    info "EPUB  $d/ -> $out (${#mds[@]} docs)"
+    local loc="${LC_ALL:-${LANG:-}}"; case "$loc" in ''|C|C.*|POSIX|POSIX.*) loc=en_US.UTF-8 ;; esac
+    LC_ALL="$loc" LANG="$loc" MDEXPORT_TMP="$TMP" pandoc "${mds[@]}" \
+      --from=markdown+tex_math_dollars+tex_math_single_backslash+gfm_auto_identifiers \
+      --to=epub3 --lua-filter="$LUA" --mathml --metadata title="$dbase" --output="$out"
+    ok "$(basename "$out") ($(wc -c <"$out" | tr -d ' ') bytes)"
+    [[ $OPEN -eq 1 ]] && open "$out"
+    return 0
+  fi
+
+  # HTML/PDF: a sibling DIRECTORY of per-file outputs.
+  local fmt=html; { [[ $DO_PDF -eq 1 ]] || [[ $PDF_HTML -eq 1 ]]; } && fmt=pdf
+  local sib="${user_out:-$dparent/$dbase-$fmt}"
+  mkdir -p "$sib"
+  OUT_DIR="$sib"                                  # route per-file builds into the sibling dir
+  export MDEXPORT_FOLLOW_OUT="$TMP/dirlinks"      # activate .md->.html rewriting in build_html
+  local want_open=$OPEN; OPEN=0
+  local -a built=()
+  for f in "${mds[@]}"; do
+    IN="$f"; dir="$(dirname "$f")"; base="$(basename "${f%.*}")"
+    : > "$MDEXPORT_FOLLOW_OUT"
+    [[ $DO_HTML -eq 1 ]] && { build_html; built+=("$sib/$base.html"); }
+    if   [[ $PDF_HTML -eq 1 ]]; then build_pdf_html
+    elif [[ $DO_PDF   -eq 1 ]]; then build_pdf; fi
+  done
+  info "wrote ${#mds[@]} document(s) to $sib/"
+  # --bundle: zip the built HTML set into a single .zip, a sibling FILE.
+  if [[ $BUNDLE -eq 1 && ${#built[@]} -gt 0 ]]; then
+    local zip="${user_out:-$dparent}/$dbase.zip" names=() h
+    for h in "${built[@]}"; do names+=("$(basename "$h")"); done
+    rm -f "$zip"
+    ( cd "$sib" && python3 -m zipfile -c "$zip" "${names[@]}" ) || die "failed to create bundle: $zip"
+    ok "$(basename "$zip") ($(wc -c <"$zip" | tr -d ' ') bytes, ${#names[@]} docs)"
+  fi
+  [[ $want_open -eq 1 ]] && open "$sib"
+  return 0
+}
+
+if [[ -d "$IN" ]]; then
+  dir_build
+elif [[ $FOLLOW -eq 1 ]]; then
   follow_build
 elif [[ $WATCH -eq 1 ]]; then
   info "watching $IN (Ctrl-C to stop)"
