@@ -28,5 +28,18 @@ mkdir -p "$(dirname "$OUT")"
 rm -rf "$OUT"
 osacompile -o "$OUT" "$SRC"
 
+# osacompile emits a Carbon-era document-type declaration (CFBundleTypeExtensions
+# "*"), which recent macOS does not reliably use to accept drops — folders in
+# particular. Declare a modern UTI so Finder routes ANY dropped file or folder to
+# the on-open handler. public.item is the root type both files and folders share.
+PLIST="$OUT/Contents/Info.plist"
+if [[ -f "$PLIST" ]] && command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes array" "$PLIST" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:0 string public.item" "$PLIST" 2>/dev/null || true
+fi
+# Refresh Launch Services so the change takes effect without a logout.
+LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+[[ -x "$LSREG" ]] && "$LSREG" -f "$OUT" 2>/dev/null || true
+
 echo "built $OUT"
-echo "Drag Markdown files or folders onto it to publish. (First run: right-click → Open to clear Gatekeeper.)"
+echo "Drag Markdown files or folders onto the app icon to publish. (First run: right-click → Open to clear Gatekeeper.)"
