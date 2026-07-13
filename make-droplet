@@ -8,7 +8,7 @@
 # each output is written as a sibling of what you dropped.
 #
 # Usage:
-#   ./make-droplet                 # -> ~/Applications/notmarkdown.app
+#   ./make-droplet                 # -> ~/Desktop/notmarkdown.app
 #   ./make-droplet /path/to/My.app # -> a chosen location
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -18,7 +18,7 @@ while [[ -L "$SELF" ]]; do SELF="$(readlink "$SELF")"; done
 ASSETS="$(cd "$(dirname "$SELF")" && pwd)"
 SRC="$ASSETS/droplet.applescript"
 
-OUT="${1:-$HOME/Applications/notmarkdown.app}"
+OUT="${1:-$HOME/Desktop/notmarkdown.app}"
 
 command -v osacompile >/dev/null 2>&1 || { echo "make-droplet: osacompile not found (macOS only)" >&2; exit 1; }
 [[ -f "$SRC" ]] || { echo "make-droplet: missing $SRC" >&2; exit 1; }

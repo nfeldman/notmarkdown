@@ -312,7 +312,7 @@ dropping. `make-droplet` compiles a small AppleScript into an app you can drop M
 files or folders onto:
 
 ```bash
-./make-droplet                 # -> ~/Applications/notmarkdown.app
+./make-droplet                 # -> ~/Desktop/notmarkdown.app
 ```
 
 On a drop it asks which format to produce — HTML, PDF, EPUB, or both — and applies it to
