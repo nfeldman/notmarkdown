@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>notmarkdown — Markdown that lasts</title>
+<meta name="description" content="A command-line tool that turns Markdown — Mermaid diagrams and LaTeX math included — into self-contained HTML, PDF, and EPUB that render the same everywhere, forever.">
+
+<!-- Open Graph / share card (LinkedIn, Twitter, Slack) -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="notmarkdown — Markdown is for drafts. Markup is forever.">
+<meta property="og:description" content="Turn Markdown — Mermaid diagrams and LaTeX math included — into self-contained HTML, PDF, and EPUB that render the same everywhere, forever.">
+<meta property="og:url" content="https://nfeldman.github.io/notmarkdown/">
+<meta property="og:image" content="https://nfeldman.github.io/notmarkdown/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 40'%3E%3Cpath d='M16 1 L30 24 A15.5 15.5 0 1 1 2 24 Z' fill='%23f59e0b'/%3E%3C/svg%3E">
+
+<style>
+  :root{
+    --bg:#faf6ef; --bg2:#f3ece0; --card:#fffdf8; --ink:#1c1917; --muted:#6b6157;
+    --line:rgba(28,25,23,.10); --amber:#c2620f; --amber2:#9a3d0a; --amber-soft:#fbe9c8;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#15110c; --bg2:#1c160f; --card:#211a12; --ink:#f4efe6; --muted:#b3a794;
+      --line:rgba(255,255,255,.10); --amber:#fbbf24; --amber2:#f59e0b; --amber-soft:#3a2b12;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15110c; --bg2:#1c160f; --card:#211a12; --ink:#f4efe6; --muted:#b3a794;
+    --line:rgba(255,255,255,.10); --amber:#fbbf24; --amber2:#f59e0b; --amber-soft:#3a2b12;
+  }
+  :root[data-theme="light"]{
+    --bg:#faf6ef; --bg2:#f3ece0; --card:#fffdf8; --ink:#1c1917; --muted:#6b6157;
+    --line:rgba(28,25,23,.10); --amber:#c2620f; --amber2:#9a3d0a; --amber-soft:#fbe9c8;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; font-family:var(--sans); color:var(--ink); line-height:1.6;
+    background:
+      radial-gradient(120% 80% at 50% -10%, var(--bg2), transparent 60%),
+      var(--bg);
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit}
+  .wrap{max-width:1000px; margin:0 auto; padding:0 24px}
+  .muted{color:var(--muted)}
+
+  /* ---- hero ---- */
+  header{padding:88px 0 40px; text-align:center}
+  .mark{width:76px; height:auto; display:block; margin:0 auto 26px; filter:drop-shadow(0 8px 20px rgba(154,61,10,.22))}
+  h1{
+    font-size:clamp(34px,6vw,60px); line-height:1.05; letter-spacing:-.02em;
+    margin:0 0 6px; font-weight:800;
+  }
+  h1 .fade{color:var(--amber2)}
+  .lede{font-size:clamp(17px,2.4vw,21px); max-width:640px; margin:18px auto 0; color:var(--muted)}
+  .lede b{color:var(--ink); font-weight:600}
+
+  /* ---- install + CTAs ---- */
+  .cta{display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center; margin:34px 0 8px}
+  .cmd{
+    display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; padding:12px 12px 12px 18px; font-family:var(--mono); font-size:14.5px;
+    box-shadow:0 1px 0 var(--line), 0 12px 30px -18px rgba(0,0,0,.4); max-width:100%;
+  }
+  .cmd code{white-space:nowrap; overflow-x:auto}
+  .cmd .dollar{color:var(--amber); user-select:none}
+  .copy{
+    border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer;
+    border-radius:8px; padding:6px 10px; font:600 12px/1 var(--sans); flex:none;
+  }
+  .copy:hover{color:var(--ink); border-color:var(--amber)}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; text-decoration:none; font-weight:650;
+    border-radius:12px; padding:13px 20px; font-size:15px; border:1px solid transparent;
+  }
+  .btn.primary{background:var(--amber); color:#1c1200}
+  :root[data-theme="light"] .btn.primary,@media (prefers-color-scheme:light){.btn.primary{color:#fff}}
+  .btn.primary{color:#fff}
+  @media (prefers-color-scheme:dark){.btn.primary{color:#231705}}
+  :root[data-theme="dark"] .btn.primary{color:#231705}
+  .btn.ghost{border-color:var(--line); color:var(--ink)}
+  .btn.ghost:hover{border-color:var(--amber)}
+
+  /* ---- proof: before -> after ---- */
+  .proof{margin:64px 0 8px}
+  .grid3{display:grid; grid-template-columns:1fr auto 1fr; gap:20px; align-items:center}
+  .panel{
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 18px 20px;
+    box-shadow:0 20px 40px -30px rgba(0,0,0,.5); min-width:0;
+  }
+  .panel h3{margin:0 0 12px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700}
+  .src{font-family:var(--mono); font-size:12.5px; line-height:1.7; white-space:pre-wrap; word-break:break-word; margin:0}
+  .src .k{color:var(--amber)} .src .d{color:var(--muted)}
+  .arrow{display:flex; flex-direction:column; align-items:center; gap:8px; color:var(--muted); font-family:var(--mono); font-size:12px}
+  .arrow svg{width:34px; height:34px}
+  .rendered h4{margin:0 0 10px; font-size:16px; letter-spacing:-.01em}
+  .rendered .eq{font-family:"Latin Modern Math","Cambria Math",Georgia,serif; font-size:19px; text-align:center; margin:14px 0 4px}
+  .rendered .eq i{font-family:inherit}
+  .diagram{width:100%; height:auto; display:block; margin:2px auto 0}
+
+  /* ---- benefits ---- */
+  .benefits{margin:72px 0 8px; display:grid; grid-template-columns:repeat(3,1fr); gap:22px}
+  .benefit .ic{width:30px; height:30px; color:var(--amber); margin-bottom:10px}
+  .benefit h3{margin:0 0 4px; font-size:17px; letter-spacing:-.01em}
+  .benefit p{margin:0; color:var(--muted); font-size:15px}
+
+  /* ---- how ---- */
+  .how{margin:70px 0 0; text-align:center; color:var(--muted); font-size:15px}
+  .how code{font-family:var(--mono); background:var(--amber-soft); color:var(--ink); padding:.1em .4em; border-radius:5px; font-size:.92em}
+
+  /* ---- footer ---- */
+  footer{margin-top:74px; border-top:1px solid var(--line); padding:26px 0 60px; text-align:center; color:var(--muted); font-size:14px}
+  footer a{color:var(--amber); text-decoration:none; font-weight:600}
+  footer a:hover{text-decoration:underline}
+  .dot{opacity:.4; margin:0 8px}
+
+  @media (max-width:760px){
+    header{padding:64px 0 24px}
+    .grid3{grid-template-columns:1fr; gap:14px}
+    .arrow{margin:6px 0}
+    .arrow svg{transform:rotate(90deg)}
+    .benefits{grid-template-columns:1fr; gap:28px}
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <header>
+    <svg class="mark" viewBox="330 250 364 575" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <radialGradient id="a" cx="40%" cy="32%" r="80%">
+          <stop offset="0" stop-color="#fff1c9"/><stop offset=".28" stop-color="#fbc02d"/>
+          <stop offset=".6" stop-color="#ef9a1a"/><stop offset=".86" stop-color="#c85f10"/>
+          <stop offset="1" stop-color="#8f3d0a"/>
+        </radialGradient>
+        <linearGradient id="n" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#803713"/><stop offset="1" stop-color="#4d1e07"/>
+        </linearGradient>
+      </defs>
+      <path d="M512 270 L669 522 A185 185 0 1 1 355 522 Z" fill="url(#a)"/>
+      <g stroke="url(#n)" fill="url(#n)">
+        <line x1="512" y1="576" x2="440" y2="686" stroke-width="13"/>
+        <line x1="512" y1="576" x2="586" y2="686" stroke-width="13"/>
+        <circle cx="512" cy="576" r="28"/><circle cx="440" cy="686" r="25"/><circle cx="586" cy="686" r="25"/>
+      </g>
+      <g fill="#ffd98a" opacity=".5"><circle cx="505" cy="568" r="9"/><circle cx="434" cy="679" r="8"/><circle cx="580" cy="679" r="8"/></g>
+    </svg>
+
+    <h1>Markdown is for drafts.<br><span class="fade">Markup is forever.</span></h1>
+    <p class="lede"><b>notmarkdown</b> turns Markdown — Mermaid diagrams and LaTeX math and all — into
+      <b>self-contained</b> HTML, PDF, and EPUB that render the same everywhere, with no server, no
+      JavaScript, and no link left to rot.</p>
+
+    <div class="cta">
+      <div class="cmd">
+        <span class="dollar">$</span>
+        <code id="cmd">git clone https://github.com/nfeldman/notmarkdown &amp;&amp; cd notmarkdown &amp;&amp; ./setup.sh</code>
+        <button class="copy" id="copy" aria-label="Copy install command">Copy</button>
+      </div>
+    </div>
+    <div class="cta" style="margin-top:14px">
+      <a class="btn primary" href="https://github.com/nfeldman/notmarkdown">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        View on GitHub
+      </a>
+      <a class="btn ghost" href="https://github.com/nfeldman/notmarkdown#readme">Read the docs</a>
+    </div>
+  </header>
+
+  <!-- proof: the transform -->
+  <section class="proof">
+    <div class="grid3">
+      <div class="panel">
+        <h3>hydra.md</h3>
+<pre class="src"><span class="d">## The Kirby–Paris hydra</span>
+
+<span class="k">```mermaid</span>
+graph TD
+  R((root)) --&gt; A((h₁))
+  R --&gt; B((h₂))
+<span class="k">```</span>
+
+Its ordinal is <span class="k">$</span>\omega^\omega<span class="k">$</span>, yet
+every hydra <span class="d">dies</span>.</pre>
+      </div>
+
+      <div class="arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <span>mdexport</span>
+      </div>
+
+      <div class="panel rendered">
+        <h4>The Kirby–Paris hydra</h4>
+        <svg class="diagram" viewBox="0 0 240 110" xmlns="http://www.w3.org/2000/svg" aria-label="graph: root with two children">
+          <g stroke="var(--amber)" stroke-width="2.5"><line x1="120" y1="30" x2="70" y2="82"/><line x1="120" y1="30" x2="170" y2="82"/></g>
+          <g fill="var(--card)" stroke="var(--amber)" stroke-width="2.5">
+            <circle cx="120" cy="26" r="18"/><circle cx="70" cy="86" r="16"/><circle cx="170" cy="86" r="16"/>
+          </g>
+          <g fill="var(--ink)" font-family="var(--sans)" font-size="12" text-anchor="middle" dominant-baseline="central">
+            <text x="120" y="26">root</text><text x="70" y="86">h₁</text><text x="170" y="86">h₂</text>
+          </g>
+        </svg>
+        <p class="eq">Its ordinal is <i>ω</i><sup style="font-style:italic">ω</sup>, yet every hydra dies.</p>
+      </div>
+    </div>
+    <p class="how" style="margin-top:22px">Diagrams and equations become part of the document — inline SVG and MathML —
+      not links to a rendering service that might one day return a 404.</p>
+  </section>
+
+  <!-- benefits -->
+  <section class="benefits">
+    <div class="benefit">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+      <h3>Self-contained</h3>
+      <p>One file. No server, no JavaScript, no CDN. Open it in ten years and it looks identical.</p>
+    </div>
+    <div class="benefit">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>
+      <h3>Diagrams &amp; math, baked in</h3>
+      <p>Mermaid renders to SVG, LaTeX to MathML — right in the output. A broken diagram never corrupts the doc.</p>
+    </div>
+    <div class="benefit">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v14H4z"/><path d="M4 9h16M8 4v14"/></svg>
+      <h3>HTML, PDF, PDF/A, EPUB</h3>
+      <p>One source, every durable format. Drag a folder onto the macOS app, or wire it into any pipeline.</p>
+    </div>
+  </section>
+
+  <p class="how">Built on <code>pandoc</code>, <code>typst</code>, and <code>mermaidx</code>.</p>
+
+  <footer>
+    Free &amp; open source · MIT
+    <span class="dot">·</span>
+    <a href="https://github.com/nfeldman/notmarkdown">GitHub</a>
+    <span class="dot">·</span>
+    <a href="https://github.com/sponsors/nfeldman">Sponsor</a>
+    <span class="dot">·</span>
+    by Noah Feldman
+  </footer>
+
+</main>
+
+<script>
+  (function(){
+    var btn=document.getElementById('copy'), cmd=document.getElementById('cmd');
+    if(!btn||!cmd)return;
+    btn.addEventListener('click',function(){
+      var t=cmd.textContent.trim();
+      navigator.clipboard.writeText(t).then(function(){
+        var o=btn.textContent; btn.textContent='Copied'; btn.style.color='var(--amber)';
+        setTimeout(function(){btn.textContent=o; btn.style.color='';},1400);
+      });
+    });
+  })();
+</script>
+</body>
+</html>

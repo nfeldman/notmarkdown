@@ -4,6 +4,9 @@
 *.epub
 *.zip
 
+# ...but the GitHub Pages site is a real source file, not generated output.
+!docs/index.html
+
 # Python bytecode from the test suite.
 __pycache__/
 *.pyc
