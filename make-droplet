@@ -17,6 +17,7 @@ SELF="${BASH_SOURCE[0]}"
 while [[ -L "$SELF" ]]; do SELF="$(readlink "$SELF")"; done
 ASSETS="$(cd "$(dirname "$SELF")" && pwd)"
 SRC="$ASSETS/droplet.applescript"
+ICON="$ASSETS/icon.png"
 
 OUT="${1:-$HOME/Desktop/notmarkdown.app}"
 
@@ -37,6 +38,26 @@ if [[ -f "$PLIST" ]] && command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
   /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes array" "$PLIST" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:0 string public.item" "$PLIST" 2>/dev/null || true
 fi
+# Give the app its own icon. osacompile ships a generic applet icon; if a
+# checked-in icon.png is present, render it to an .icns (sips + iconutil, both
+# built into macOS) and point the bundle at it. The 1024px PNG is the portable
+# source — no SVG rasterizer needed on the building machine.
+if [[ -f "$ICON" ]] && command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
+  ICONSET="$(mktemp -d)/droplet.iconset"
+  mkdir -p "$ICONSET"
+  for s in 16 32 128 256 512; do
+    sips -z "$s" "$s" "$ICON" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null 2>&1
+    d=$((s * 2))
+    sips -z "$d" "$d" "$ICON" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null 2>&1
+  done
+  if iconutil -c icns "$ICONSET" -o "$OUT/Contents/Resources/droplet.icns" 2>/dev/null; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile droplet" "$PLIST" 2>/dev/null \
+      || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string droplet" "$PLIST" 2>/dev/null || true
+    touch "$OUT"  # nudge Finder to pick up the new icon
+  fi
+  rm -rf "$(dirname "$ICONSET")"
+fi
+
 # Refresh Launch Services so the change takes effect without a logout.
 LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 [[ -x "$LSREG" ]] && "$LSREG" -f "$OUT" 2>/dev/null || true

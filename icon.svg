@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="34%" r="72%">
+      <stop offset="0%" stop-color="#fbf5ea"/>
+      <stop offset="62%" stop-color="#f1e7d6"/>
+      <stop offset="100%" stop-color="#e6d9c3"/>
+    </radialGradient>
+    <radialGradient id="amber" cx="40%" cy="34%" r="78%">
+      <stop offset="0%" stop-color="#fff1c9"/>
+      <stop offset="26%" stop-color="#fbc02d"/>
+      <stop offset="58%" stop-color="#ef9a1a"/>
+      <stop offset="84%" stop-color="#c85f10"/>
+      <stop offset="100%" stop-color="#8f3d0a"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f9b13a" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#f9b13a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="node" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#803713"/>
+      <stop offset="100%" stop-color="#4d1e07"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="20"/></filter>
+    <filter id="hi" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="12"/></filter>
+    <filter id="incl" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+
+  <!-- ground -->
+  <rect x="100" y="100" width="824" height="824" rx="188" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="188" fill="none" stroke="#00000010" stroke-width="2"/>
+
+  <!-- warm glow + contact shadow -->
+  <circle cx="512" cy="600" r="250" fill="url(#glow)"/>
+  <ellipse cx="512" cy="812" rx="180" ry="34" fill="#5a3208" opacity="0.20" filter="url(#soft)"/>
+
+  <!-- the drop -->
+  <path d="M 512 270 L 669 522 A 185 185 0 1 1 355 522 L 512 270 Z" fill="url(#amber)"/>
+  <!-- inner rim shading -->
+  <path d="M 512 270 L 669 522 A 185 185 0 1 1 355 522 L 512 270 Z" fill="none" stroke="#7a3708" stroke-opacity="0.35" stroke-width="6"/>
+
+  <!-- suspended specimen: 3-node graph (an inclusion) -->
+  <g filter="url(#incl)" opacity="0.30"><g fill="#3a1604" stroke="#3a1604">
+    <line x1="512" y1="576" x2="440" y2="686" stroke-width="15"/>
+    <line x1="512" y1="576" x2="586" y2="686" stroke-width="15"/>
+    <circle cx="512" cy="576" r="30"/><circle cx="440" cy="686" r="27"/><circle cx="586" cy="686" r="27"/>
+  </g></g>
+  <g stroke="url(#node)" fill="url(#node)">
+    <line x1="512" y1="576" x2="440" y2="686" stroke-width="13"/>
+    <line x1="512" y1="576" x2="586" y2="686" stroke-width="13"/>
+    <circle cx="512" cy="576" r="28"/><circle cx="440" cy="686" r="25"/><circle cx="586" cy="686" r="25"/>
+  </g>
+  <!-- tiny lit rim on nodes (light through amber) -->
+  <g fill="#ffd98a" opacity="0.5"><circle cx="505" cy="568" r="9"/><circle cx="434" cy="679" r="8"/><circle cx="580" cy="679" r="8"/></g>
+
+  <!-- specular highlight -->
+  <ellipse cx="446" cy="392" rx="86" ry="120" fill="#fffdf4" opacity="0.5" filter="url(#hi)" transform="rotate(-24 446 392)"/>
+</svg>

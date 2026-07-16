@@ -314,6 +314,18 @@ if command -v osacompile >/dev/null 2>&1; then
   { printf '%s' "$SCPT" | grep -q 'on open' && printf '%s' "$SCPT" | grep -q 'mdexport'; } \
     && ok "droplet handles dropped items (on open) and invokes mdexport" \
     || bad "droplet logic" "compiled script is missing the on-open/mdexport wiring"
+  # The build renders the checked-in icon.png into the bundle's .icns. The generic
+  # osacompile applet icon is ~74KB; a real multi-size icns is much larger.
+  if [ -f "$REPO/icon.png" ] && command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
+    ICNS="$DAPP/Contents/Resources/droplet.icns"
+    if [ -f "$ICNS" ] && [ "$(stat -f '%z' "$ICNS" 2>/dev/null || stat -c '%s' "$ICNS")" -gt 200000 ]; then
+      ok "droplet carries its custom icon (icon.png rendered into droplet.icns)"
+    else
+      bad "droplet icon" "expected a rendered custom .icns in the bundle"
+    fi
+  else
+    skp "droplet icon" "icon.png or sips/iconutil unavailable"
+  fi
 else
   skp "make-droplet" "osacompile not available (macOS only)"
 fi
