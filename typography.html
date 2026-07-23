@@ -2,7 +2,10 @@
   /* Devbook markdown export — self-contained typography, no web fonts fetched.
      Uses durable system font stacks so the file needs zero network, ever. */
   :root { color-scheme: light dark; }
-  html { font-size: 18px; -webkit-text-size-adjust: 100%; }
+  /* Paint the canvas at the html level too: content floated outside the body
+     box (margin notes) must never land on an unpainted strip. */
+  html { font-size: 18px; -webkit-text-size-adjust: 100%; background: #fdfdfc; }
+  @media (prefers-color-scheme: dark) { html { background: #1a1a1a; } }
   body {
     max-width: 44rem;
     margin: 3rem auto;
