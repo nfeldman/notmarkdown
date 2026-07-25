@@ -37,13 +37,13 @@ export PATH="$HOME/.local/bin:$PATH"   # where uv/pipx put console scripts
 if command -v mermaidx >/dev/null 2>&1; then
   ok "mermaidx present"
 elif command -v uv >/dev/null 2>&1; then
-  info "uv tool install mermaidx"
-  uv tool install mermaidx || warn "mermaidx install failed"
+  info "uv tool install mermaidx==0.8.0"
+  uv tool install mermaidx==0.8.0 || warn "mermaidx install failed"
 elif command -v pipx >/dev/null 2>&1; then
-  info "pipx install mermaidx"
-  pipx install mermaidx || warn "mermaidx install failed"
+  info "pipx install mermaidx==0.8.0"
+  pipx install mermaidx==0.8.0 || warn "mermaidx install failed"
 else
-  warn "no uv or pipx found — install one, then: 'uv tool install mermaidx' (diagrams need it)"
+  warn "no uv or pipx found — install one, then: 'uv tool install mermaidx==0.8.0' (diagrams need it)"
 fi
 
 # 3. Put mdexport on PATH (symlink back to this repo; assets resolve beside it)

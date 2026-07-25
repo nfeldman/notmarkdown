@@ -23,7 +23,8 @@ The manual equivalent:
 
 ```bash
 brew install pandoc typst
-uv tool install mermaidx        # or: pipx install mermaidx
+uv tool install mermaidx==0.8.0   # or: pipx install mermaidx==0.8.0
+# (pinned: newer mermaidx releases currently ship metadata pip cannot parse)
 mkdir -p ~/.local/bin
 ln -s "$PWD/mdexport" ~/.local/bin/mdexport
 ```
