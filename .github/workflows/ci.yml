@@ -25,10 +25,14 @@ jobs:
           sudo mv /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/
           typst --version
 
-      # mermaidx — the default browser-free renderer (pipx is preinstalled on the runner).
+      # mermaidx — the default browser-free renderer (pipx is preinstalled on the
+      # runner). Pinned like everything else here: an unpinned install broke when
+      # a mermaidx release shipped with version metadata pipx cannot parse
+      # (packaging.version.InvalidVersion), and 0.8.0 is what the local suite
+      # validates.
       - name: Install mermaidx
         run: |
-          pipx install mermaidx
+          pipx install mermaidx==0.8.0
           mermaidx --version || true
 
       # mmdc — the opt-in full-fidelity renderer. The runner ships Chrome's shared
