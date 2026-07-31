@@ -23,8 +23,8 @@ The manual equivalent:
 
 ```bash
 brew install pandoc typst
-uv tool install mermaidx==0.8.0   # or: pipx install mermaidx==0.8.0
-# (pinned: newer mermaidx releases currently ship metadata pip cannot parse)
+uv tool install mermaidx==0.9.4   # or: pipx install mermaidx==0.9.4
+# (pinned: the exact version the test suite validates)
 mkdir -p ~/.local/bin
 ln -s "$PWD/mdexport" ~/.local/bin/mdexport
 ```
@@ -81,9 +81,10 @@ abort the build instead.
 
 ### Renderer: mermaidx by default, mmdc when you need it
 
-**mermaidx** is the default. It runs Mermaid without a browser and covers
-flowcharts, sequence diagrams, ER diagrams, git graphs, and timelines. Other
-types — state, class, pie, gantt, mindmap, journey — become placeholders.
+**mermaidx** is the default. It runs Mermaid without a browser and covers every
+core diagram type — flowcharts (all node shapes), state, sequence, class, ER,
+pie, gantt, git graphs, timelines, mindmaps, and more. A type it cannot handle
+(e.g. `zenuml`) becomes a placeholder.
 
 For every Mermaid diagram type, install the official Mermaid CLI yourself and opt
 in per run:
@@ -99,7 +100,7 @@ HTML, hi-DPI PNG for PDF — and batches the whole document in one pass.
 
 | Renderer | Strength | Cost |
 |---|---|---|
-| `mermaidx` | Browser-free, few moving parts | Five diagram families |
+| `mermaidx` | Browser-free, few moving parts | A few plugin types unsupported |
 | `mmdc` | Every Mermaid diagram type | ~170 MB Chromium |
 
 ## Two paths to PDF

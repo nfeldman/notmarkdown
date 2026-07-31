@@ -33,17 +33,22 @@ for f in pandoc typst; do
 done
 
 # 2. mermaidx — browser-free Mermaid renderer (no headless Chrome) ----------
+# Pinned to the exact version the test suite validates; a different version on
+# PATH (older OR newer) is replaced so every install renders identically.
+# 0.8.0 could not render stateDiagram-v2 or flowchart stadium nodes; 0.9.4 can.
+MERMAIDX_PIN=0.9.4
 export PATH="$HOME/.local/bin:$PATH"   # where uv/pipx put console scripts
-if command -v mermaidx >/dev/null 2>&1; then
-  ok "mermaidx present"
+MERMAIDX_HAVE="$(mermaidx --version 2>/dev/null || true)"
+if [[ "$MERMAIDX_HAVE" == "$MERMAIDX_PIN" ]]; then
+  ok "mermaidx $MERMAIDX_PIN present"
 elif command -v uv >/dev/null 2>&1; then
-  info "uv tool install mermaidx==0.8.0"
-  uv tool install mermaidx==0.8.0 || warn "mermaidx install failed"
+  info "uv tool install mermaidx==$MERMAIDX_PIN${MERMAIDX_HAVE:+ (replacing $MERMAIDX_HAVE)}"
+  uv tool install --force "mermaidx==$MERMAIDX_PIN" || warn "mermaidx install failed"
 elif command -v pipx >/dev/null 2>&1; then
-  info "pipx install mermaidx==0.8.0"
-  pipx install mermaidx==0.8.0 || warn "mermaidx install failed"
+  info "pipx install mermaidx==$MERMAIDX_PIN${MERMAIDX_HAVE:+ (replacing $MERMAIDX_HAVE)}"
+  pipx install --force "mermaidx==$MERMAIDX_PIN" || warn "mermaidx install failed"
 else
-  warn "no uv or pipx found — install one, then: 'uv tool install mermaidx==0.8.0' (diagrams need it)"
+  warn "no uv or pipx found — install one, then: 'uv tool install mermaidx==$MERMAIDX_PIN' (diagrams need it)"
 fi
 
 # 3. Put mdexport on PATH (symlink back to this repo; assets resolve beside it)

@@ -42,13 +42,13 @@ HEADER="$ASSETS/typography.html"
 # svg-scope id-namespaces inline HTML SVGs so multiple diagrams don't collide.
 export MDEXPORT_SVGSCOPE="${MDEXPORT_SVGSCOPE:-$ASSETS/svg-scope}"
 
-# ~/.local/bin holds mermaidx (pip --user); make sure it resolves.
+# ~/.local/bin holds mermaidx (uv/pipx); make sure it resolves.
 export PATH="$HOME/.local/bin:$PATH"
 
 # Mermaid renderer the filter shells out to. Default: the browser-free mermaidx
-# wrapper (no headless Chrome — the durable choice; SVG-only, ~5 diagram types,
-# other types fall back to a visible placeholder). Opt in to full fidelity across
-# every diagram type with the official mermaid-cli: MDEXPORT_MERMAID=mmdc (fetches
+# wrapper (no headless Chrome — the durable choice; SVG-only, covers every core
+# diagram type; one it can't do falls back to a visible placeholder). Opt in to
+# full browser fidelity with the official mermaid-cli: MDEXPORT_MERMAID=mmdc (fetches
 # ~170 MB chrome-headless-shell once); the filter then feeds it per-format
 # artifacts (inline SVG for HTML, hi-DPI PNG for PDF) and batches the whole doc.
 export MDEXPORT_MERMAID="${MDEXPORT_MERMAID:-$ASSETS/mermaid-render}"
@@ -114,7 +114,7 @@ command -v pandoc >/dev/null 2>&1 || die "pandoc not found (brew install pandoc)
 # Check whichever renderer is selected (first token, in case it carries args).
 RENDERER_BIN="${MDEXPORT_MERMAID%% *}"
 command -v "$RENDERER_BIN" >/dev/null 2>&1 || die "mermaid renderer '$RENDERER_BIN' not found \
-(default is the mermaidx wrapper — 'uv tool install mermaidx'; or set MDEXPORT_MERMAID=mmdc for full fidelity)"
+(default is the mermaidx wrapper — 'uv tool install mermaidx==0.9.4'; or set MDEXPORT_MERMAID=mmdc for full fidelity)"
 if [[ $DO_PDF -eq 1 ]]; then
   command -v typst >/dev/null 2>&1 || die "typst not found (brew install typst)"
 fi

@@ -14,7 +14,7 @@
 #   MDEXPORT_MERMAID=mmdc
 # ---------------------------------------------------------------------------
 set -euo pipefail
-export PATH="$HOME/.local/bin:$PATH"   # mermaidx lands here via pip --user
+export PATH="$HOME/.local/bin:$PATH"   # mermaidx lands here via uv/pipx
 
 IN=""; OUT=""
 while [[ $# -gt 0 ]]; do
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$IN" && -n "$OUT" ]] || { echo "usage: mermaid-render -i in.mmd -o out.svg" >&2; exit 2; }
 
-command -v mermaidx >/dev/null 2>&1 || { echo "mermaid-render: mermaidx not found (pip install --user mermaidx)" >&2; exit 1; }
+command -v mermaidx >/dev/null 2>&1 || { echo "mermaid-render: mermaidx not found (uv tool install mermaidx==0.9.4)" >&2; exit 1; }
 
 mermaidx -i "$IN" -o "$OUT" >/dev/null 2>&1
 

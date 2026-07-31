@@ -368,6 +368,25 @@ sequenceDiagram
   assert_count "$WORK/fs.html" '<svg' 2 "[$label] both diagrams -> inline SVG"
   assert_no_grep "$WORK/fs.html" 'class="mermaid"' "[$label] no raw mermaid fence leaks (HTML)"
 
+  # regression repros: mermaidx 0.8.0 failed on ANY stateDiagram-v2 (even two
+  # lines, no notes) and on flowchart stadium nodes A(["..."]) (even plain
+  # text), while circles/subgraphs/<br/>/parens all rendered. Fixed by the
+  # 0.9.4 pin; both diagrams must render as real SVG, not placeholders.
+  fixture ss.md '```mermaid
+stateDiagram-v2
+    [*] --> open
+```
+
+```mermaid
+flowchart LR
+    A(["plain stadium"]) --> B["b"]
+```
+'
+  build ss.md --html
+  assert_rc "$BUILD_RC" 0 "[$label] stateDiagram-v2 + stadium-node docs build"
+  assert_count "$WORK/ss.html" '<svg' 2 "[$label] state + stadium -> inline SVG"
+  assert_no_grep "$WORK/ss.html" '<div class="notmarkdown-render-error"' "[$label] state/stadium render (no placeholder)"
+
   # multi-diagram id-collision: no cross-diagram duplicate ids
   fixture multi.md '```mermaid
 flowchart LR
@@ -457,7 +476,10 @@ Tail prose.
 renderer_tests "mermaidx" "$REPO/mermaid-render"
 renderer_tests "mmdc"     "mmdc"
 
-# mmdc-only guarantees: types mermaidx can't render, and the raster PDF path.
+# mmdc-only guarantees: the whole-doc batch over mixed types, plugin types the
+# default renderer lacks (zenuml), and the raster PDF path. (state/class/pie
+# lived here while mermaidx 0.8.0 couldn't render them; as of the 0.9.4 pin they
+# also pass under the default renderer above.)
 if MDEXPORT_MERMAID=mmdc "$MDEXPORT" "$WORK/_probe.md" --html >/dev/null 2>&1 \
    && grep -q '<svg' "$WORK/_probe.html"; then
   printf "\n${_b}[mmdc] full-fidelity guarantees${_0}\n"
@@ -478,10 +500,19 @@ pie
   "a": 1
   "b": 2
 ```
+
+```mermaid
+zenuml
+  A->B: hi
+```
 '
   build exotic.md --html
-  assert_rc "$BUILD_RC" 0 "[mmdc] state/class/pie build"
-  assert_count "$WORK/exotic.html" '<svg' 3 "[mmdc] renders types mermaidx cannot (state/class/pie)"
+  assert_rc "$BUILD_RC" 0 "[mmdc] state/class/pie/zenuml build"
+  # Count per-occurrence svg-scope prefixes, not '<svg': zenuml's output nests
+  # an inner <svg>, so tag-counting would overshoot.
+  EXOTIC_N=$(grep -oE 'id="m[0-9]+-' "$WORK/exotic.html" | grep -oE 'm[0-9]+-' | sort -u | wc -l | tr -d ' ')
+  [ "$EXOTIC_N" -eq 4 ] && ok "[mmdc] batched mixed types incl. zenuml (which mermaidx cannot)" \
+                        || bad "[mmdc] batched mixed types incl. zenuml" "rendered $EXOTIC_N of 4 diagrams"
   assert_no_grep "$WORK/exotic.html" '<div class="notmarkdown-render-error"' "[mmdc] no placeholders for exotic types"
 
   if [ "$HAVE_TYPST" -eq 1 ]; then
@@ -494,18 +525,21 @@ else
   printf "\n"; skp "[mmdc] full-fidelity guarantees" "mmdc unavailable"
 fi
 
-# mermaidx-only: an unsupported type degrades to a placeholder (not an abort)
+# mermaidx-only: an unsupported type degrades to a placeholder (not an abort).
+# zenuml is the fixture — a plugin type mermaidx 0.9.4 still lacks. (pie, the
+# old fixture, renders fine as of 0.9.4; if this test starts FAILING because
+# zenuml renders, mermaidx grew zenuml support — find another unsupported type.)
 if "$REPO/mermaid-render" -i /dev/null -o "$WORK/.x.svg" >/dev/null 2>&1 || have mermaidx; then
   printf "\n${_b}[mermaidx] graceful degradation${_0}\n"
   export MDEXPORT_MERMAID="$REPO/mermaid-render"
-  fixture pie.md '```mermaid
-pie
-  "a": 1
+  fixture zen.md '```mermaid
+zenuml
+  A->B: hi
 ```
 '
-  build pie.md --html
+  build zen.md --html
   if [ "$BUILD_RC" -eq 0 ]; then
-    assert_grep "$WORK/pie.html" '<div class="notmarkdown-render-error"' "[mermaidx] unsupported type -> placeholder, no abort"
+    assert_grep "$WORK/zen.html" '<div class="notmarkdown-render-error"' "[mermaidx] unsupported type -> placeholder, no abort"
   else
     skp "[mermaidx] unsupported-type placeholder" "mermaidx probe failed"
   fi

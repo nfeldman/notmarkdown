@@ -26,13 +26,14 @@ jobs:
           typst --version
 
       # mermaidx — the default browser-free renderer (pipx is preinstalled on the
-      # runner). Pinned like everything else here: an unpinned install broke when
-      # a mermaidx release shipped with version metadata pipx cannot parse
-      # (packaging.version.InvalidVersion), and 0.8.0 is what the local suite
-      # validates.
+      # runner). Pinned like everything else here: 0.9.4 is what the local suite
+      # validates (0.8.0 failed on stateDiagram-v2 and stadium nodes). The old
+      # hazard — a release whose version metadata pipx could not parse
+      # (packaging.version.InvalidVersion) — no longer reproduces on any release
+      # currently on PyPI (re-verified 2026-07), but the pin stays regardless.
       - name: Install mermaidx
         run: |
-          pipx install mermaidx==0.8.0
+          pipx install mermaidx==0.9.4
           mermaidx --version || true
 
       # mmdc — the opt-in full-fidelity renderer. The runner ships Chrome's shared
