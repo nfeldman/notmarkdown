@@ -120,6 +120,19 @@ prints the finished HTML, so inline `code`, spacing, and typography carry over a
 you see them. Set `MDEXPORT_CHROME=/path/to/chrome` when the browser is not found
 automatically.
 
+### Why provide both?
+
+AI-assisted development lowered the cost of implementing and refining alternatives.
+That saved effort can be used in three ways:
+
+- build a prototype and discard it—the Fred Brooks “plan to throw one away” case;
+- spend the same time making one implementation substantially stronger;
+- when the needs are distinct and the maintenance cost remains reasonable, build both.
+
+This project takes the third approach. The model accelerated implementation and routine
+checking; the constraints, defaults, tradeoffs, and acceptance criteria remained human
+decisions.
+
 ## Linked sets
 
 `--follow` exports the input plus every same-directory Markdown file reachable
